@@ -1,0 +1,165 @@
+[data-skin-presentation="immersive_shell"] {
+  background-color: var(--ego-skin-panel) !important;
+}
+
+[data-skin-presentation="immersive_shell"][data-skin-settings="true"],
+[data-skin-presentation="immersive_shell"][data-skin-task-search="true"],
+[data-skin-presentation="immersive_shell"]
+  :is(
+    [data-skin-sidebar],
+    [data-skin-app-titlebar],
+    [data-skin-session-titlebar],
+    [data-skin-prompt-input],
+    [data-skin-quick-actions],
+    [data-skin-prompt-panel],
+    [data-skin-management-page]
+  ) {
+  --ego-primary: var(--ego-skin-accent);
+  --ego-primary-foreground: var(--ego-skin-accent-foreground);
+  --ego-primary-hover: color-mix(
+    in srgb,
+    var(--ego-skin-accent) 82%,
+    var(--ego-skin-foreground)
+  );
+  --ego-primary-muted: color-mix(in srgb, var(--ego-skin-accent) 15%, transparent);
+  --ego-accent: var(--ego-skin-accent-alt);
+  --ego-accent-foreground: var(--ego-skin-foreground);
+  --ego-background: var(--ego-skin-canvas);
+  --ego-foreground: var(--ego-skin-foreground);
+  --ego-surface: var(--ego-skin-panel);
+  --ego-surface-foreground: var(--ego-skin-foreground);
+  --ego-surface-raised: var(--ego-skin-panel-raised);
+  --ego-surface-overlay: color-mix(in srgb, var(--ego-skin-panel) 94%, transparent);
+  --ego-text-primary: var(--ego-skin-foreground);
+  --ego-text-secondary: var(--ego-skin-muted);
+  --ego-text-muted: color-mix(in srgb, var(--ego-skin-muted) 78%, transparent);
+  --ego-border: var(--ego-skin-border);
+  --ego-border-subtle: color-mix(in srgb, var(--ego-skin-border) 55%, transparent);
+  --ego-input-border: var(--ego-skin-border);
+  --ego-scroll-thumb: color-mix(in srgb, var(--ego-skin-accent) 48%, transparent);
+  --ego-scroll-thumb-hover: var(--ego-skin-accent);
+}
+
+[data-skin-presentation="immersive_shell"][data-skin-task-search="true"] {
+  background-color: var(--ego-skin-panel) !important;
+}
+
+[data-skin-presentation="immersive_shell"][data-skin-task-search="true"]
+  [data-skin-search-result-active="true"] {
+  background-color: var(--ego-skin-panel-raised) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-cowork-frame="true"],
+[data-skin-presentation="immersive_shell"] [data-skin-cowork="true"],
+[data-skin-presentation="immersive_shell"] [data-skin-management-frame="true"] {
+  background-color: var(--ego-skin-canvas) !important;
+  border-color: color-mix(in srgb, var(--ego-skin-border) 55%, transparent) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-management-page="true"] {
+  background-color: color-mix(
+    in srgb,
+    var(--ego-skin-canvas) 40%,
+    transparent
+  ) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-management-toolbar="true"] {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--ego-skin-canvas) 18%, transparent) 0%,
+    color-mix(in srgb, var(--ego-skin-canvas) 10%, transparent) 76%,
+    transparent 100%
+  ) !important;
+  backdrop-filter: blur(14px) saturate(0.82);
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-sidebar] {
+  color: var(--ego-skin-foreground);
+  background: linear-gradient(
+    155deg,
+    var(--ego-skin-panel-raised),
+    var(--ego-skin-panel) 48%,
+    color-mix(in srgb, var(--ego-skin-panel) 86%, var(--ego-skin-canvas))
+  ) !important;
+  box-shadow: none;
+}
+
+[data-skin-presentation="immersive_shell"]
+  :is([data-skin-app-titlebar], [data-skin-session-titlebar]) {
+  color: var(--ego-skin-foreground);
+  background: linear-gradient(
+    155deg,
+    var(--ego-skin-panel-raised),
+    var(--ego-skin-panel) 48%,
+    color-mix(in srgb, var(--ego-skin-panel) 86%, var(--ego-skin-canvas))
+  ) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-app-titlebar] {
+  border-bottom-color: transparent !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-session-titlebar] {
+  border-color: color-mix(in srgb, var(--ego-skin-border) 55%, transparent) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-artifact-add-tab="true"] {
+  background-color: transparent !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-sidebar] button:hover {
+  background-color: color-mix(in srgb, var(--ego-skin-accent) 10%, transparent) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-sidebar]
+  :is([aria-current="page"], [aria-selected="true"]) {
+  background-color: color-mix(in srgb, var(--ego-skin-accent) 16%, transparent) !important;
+  box-shadow: inset 2px 0 var(--ego-skin-accent);
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-home-copy] h2 {
+  color: var(--ego-skin-foreground) !important;
+  text-shadow: 0 1px 10px color-mix(in srgb, var(--ego-skin-canvas) 72%, transparent);
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-home-copy] p {
+  color: var(--ego-skin-muted) !important;
+}
+
+[data-skin-presentation="immersive_shell"] [data-skin-quick-actions] button,
+[data-skin-presentation="immersive_shell"] [data-skin-prompt-panel] button {
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--ego-skin-canvas) 28%, transparent);
+  backdrop-filter: blur(8px) saturate(1.04);
+}
+
+.skin-ambient-effects span {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ego-skin-accent);
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--ego-skin-accent) 42%, transparent);
+  opacity: 0.45;
+  animation: ego-skin-particle-pulse 5s ease-in-out infinite;
+}
+
+.skin-ambient-effects span:nth-child(1) { left: 8%; top: 18%; }
+.skin-ambient-effects span:nth-child(2) { left: 27%; top: 72%; animation-delay: -1.2s; }
+.skin-ambient-effects span:nth-child(3) { left: 46%; top: 14%; background: var(--ego-skin-accent-alt); animation-delay: -2.8s; }
+.skin-ambient-effects span:nth-child(4) { left: 63%; top: 61%; animation-delay: -0.7s; }
+.skin-ambient-effects span:nth-child(5) { left: 78%; top: 24%; background: var(--ego-skin-accent-alt); animation-delay: -3.4s; }
+.skin-ambient-effects span:nth-child(6) { left: 91%; top: 76%; animation-delay: -2s; }
+.skin-ambient-effects span:nth-child(7) { left: 58%; top: 88%; background: var(--ego-skin-accent-alt); animation-delay: -4.1s; }
+.skin-ambient-effects span:nth-child(8) { left: 84%; top: 47%; animation-delay: -1.8s; }
+
+@keyframes ego-skin-particle-pulse {
+  0%, 100% { opacity: 0.24; transform: scale(0.85); }
+  50% { opacity: 0.62; transform: scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skin-ambient-effects span {
+    animation: none;
+  }
+}

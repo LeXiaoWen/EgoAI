@@ -1,0 +1,34 @@
+import { configureStore } from '@reduxjs/toolkit';
+
+import { libraryArtifactListener } from './libraryArtifactListener';
+import agentReducer from './slices/agentSlice';
+import artifactReducer from './slices/artifactSlice';
+import asrQuotaReducer from './slices/asrQuotaSlice';
+import authReducer from './slices/authSlice';
+import coworkReducer from './slices/coworkSlice';
+import kitReducer from './slices/kitSlice';
+import mcpReducer from './slices/mcpSlice';
+import modelReducer from './slices/modelSlice';
+import quickActionReducer from './slices/quickActionSlice';
+import skillReducer from './slices/skillSlice';
+
+export const store = configureStore({
+  reducer: {
+    model: modelReducer,
+    cowork: coworkReducer,
+    skill: skillReducer,
+    mcp: mcpReducer,
+    quickAction: quickActionReducer,
+    agent: agentReducer,
+    asrQuota: asrQuotaReducer,
+    auth: authReducer,
+    artifact: artifactReducer,
+    kit: kitReducer,
+  },
+  middleware: getDefaultMiddleware => (
+    getDefaultMiddleware().prepend(libraryArtifactListener.middleware)
+  ),
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch; 
