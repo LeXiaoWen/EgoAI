@@ -5,116 +5,85 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows-4493F8?style=flat-square" alt="Supported platforms: macOS and Windows" />
+  <img src="https://img.shields.io/badge/macOS%20%7C%20Windows-4493F8?style=flat-square" alt="支持平台：macOS 与 Windows" />
   <img src="https://img.shields.io/badge/Electron-40-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 40" />
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 18" />
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
 </p>
 
 <p align="center">
-  English · <a href="README_zh.md">中文</a>
+  <img src="docs/res/mainpage_zh.png" alt="主界面" />
 </p>
 
-<p align="center">
-  <strong>A general-purpose desktop Agent that works in your real working environment.</strong><br/>
-  Local-first · built on the LobsterAI desktop skeleton and the OpenClaw Agent runtime
-</p>
+## EgoAI 是什么
 
-<p align="center">
-  <a href="#what-is-egoai"><strong>What Is EgoAI</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#roadmap"><strong>Roadmap</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#features"><strong>Features</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#developing"><strong>Developing</strong></a>
-</p>
+EgoAI 是一个通用桌面 Agent 应用，能够在你的真实工作环境中操作：本地文件、终端命令、浏览器流程、文档、表格、演示、项目工作区。
 
-<p align="center">
-  <img src="docs/res/mainpage_en.png" alt="main page" />
-</p>
+- **本地优先**：会话、应用数据与 Agent 记忆都保存在本机，数据默认不出机。
+- **基于 LobsterAI 骨架**：桌面壳、Cowork 产品/会话层、OpenClaw Agent 运行时、MCP 客户端以及技能 / Agent / Artifacts 体系原样继承，改名重构为 EgoAI。
+- **整合原则**：尽可能复用现有能力，只做「装配/胶水」代码（进程拉起、配置注册、品牌改名），除非必要不新增业务逻辑。
 
-## What Is EgoAI
+`Cowork` 是产品/会话层，负责会话、消息、权限、UI 状态、本地持久化、Artifacts 与 IPC 契约；`OpenClaw` 是其下的 Agent 运行时与网关。这一划分让本地持久化与界面留在桌面应用里，而把 Agent 执行委托给 OpenClaw。
 
-EgoAI is a general-purpose desktop Agent application. It operates in your real working environment: local files, terminal commands, browser workflows, documents, spreadsheets, slides, IM channels, scheduled jobs, and project workspaces.
+## 功能特性
 
-- **Local-first**: sessions, app data, and Agent memory live on your machine. The data stays local by default.
-- **Built from LobsterAI's skeleton**: the desktop shell, Cowork product/session layer, OpenClaw Agent runtime, MCP client, and the skills / agents / artifacts system are carried over intact, rebranded to EgoAI.
-- **Integration principle**: reuse existing capability as much as possible — glue code only (process management, config registration, branding), no new business logic unless necessary.
+### 桌面 Cowork 会话
 
-`Cowork` is the product/session layer that owns sessions, messages, permissions, UI state, local persistence, artifacts, and IPC contracts. `OpenClaw` is the runtime and gateway underneath it. That split keeps local persistence and the UI in the desktop app while delegating agent execution to OpenClaw.
+针对本地项目与文件运行长任务式 Agent 任务。EgoAI 流式展示进度、保留会话历史、渲染工具输出，并在敏感操作（文件操作、终端命令、网络访问）前请求授权。
 
-## Roadmap
+### 多 Agent 工作流
 
-The app evolves in stages per the *General-Purpose Desktop Agent Integration Plan*. Stage 0 is done; stages 1–2 add domain skills and a local knowledge base.
+创建拥有独立身份、模型选择、技能、工作目录与启用状态的自定义 Agent。保留主 Agent 处理日常通用工作，用专用 Agent 承担可复用的固定角色。
 
-| Stage | Scope | Status |
-| --- | --- | --- |
-| **0** | Initialize & prune the skeleton: rename to EgoAI, drop NetEase-specific channels (POPO / NIM / NetEase Bee) and video/image generation skills, clean dead identifiers, ship a blue brand icon set | ✅ Done |
-| **1** | Tender-writing skill + `bid-designer` preset Agent (reuse the bid project's `SKILL.md`; the two-phase workflow runs on the Agent runtime) | Planned |
-| **2** | Local knowledge base + RAG: `weknora-lite` backend + MCP server (Agent retrieval line) + an embedded management UI (user line); vectorization defaults to local Ollama | Planned |
-| **3** | GraphRAG + offline evaluation (optional enhancement) | Optional |
+### 专家套件
 
-## Features
+安装面向场景的专家套件，打包常用工作流所需的能力组合与参考资料。套件与单个技能独立选择，一个工作流可以同时组合精选套件与单个工具。
 
-### Desktop Cowork Sessions
+### 技能（Skills）
 
-Run long-form Agent tasks against local projects and files. EgoAI streams progress, keeps session history, renders tool output, and asks for approval before sensitive actions such as file operations, terminal commands, or network access.
+内置 25 个技能，配置在 `SKILLs/skills.config.json`，包括网络搜索、Word 文档、电子表格、PPT、PDF 处理、Remotion 视频渲染、浏览器自动化、股票研究、内容写作、天气与技能创建等。
 
-### Multi-Agent Workflows
+### MCP 服务器
 
-Create custom Agents with their own identity, model choice, skills, working directory, enabled state, and IM bindings. Keep the Main Agent for general work and use specialized Agents for repeatable roles.
+通过 Model Context Protocol 服务器连接外部工具与数据源。EgoAI 在本地保存用户配置的服务器，并把启用项同步进 OpenClaw。
 
-### Skills
+### 插件
 
-Ships with 25 built-in skills configured in `SKILLs/skills.config.json`, including web search, Word documents, spreadsheets, PowerPoint, PDF processing, Remotion video rendering, browser automation, stock research, content writing, weather, and skill creation.
+管理用户安装的 OpenClaw 插件及其启用/配置状态，扩展 Agent 运行时能力。
 
-### MCP Servers
+### 丰富的 Artifacts
 
-Connect external tools and data sources through Model Context Protocol servers. EgoAI stores user-configured servers locally and syncs enabled servers into OpenClaw.
+在桌面应用内预览与管理生成的 HTML、SVG、图片、视频、Mermaid 图、代码、Markdown、文本、文档与本地服务 Artifacts。
 
-### Scheduled Tasks
+### 本地记忆与数据
 
-Create recurring work either by conversation or through the scheduled task UI. Use it for daily news digests, inbox summaries, website monitoring, weekly reports, and other repeatable work.
+会话与应用数据保存在本地 SQLite（Electron `userData` 下的 `egoai.sqlite`）。OpenClaw 工作区记忆使用 `MEMORY.md`、`USER.md`、`SOUL.md` 与每日笔记等文件，让持久偏好与项目上下文跨会话延续。
 
-### IM Remote Control
+## 实际场景示例
 
-Reach your desktop Agent from WeChat, WeCom, DingTalk, Feishu/Lark, QQ, Telegram, Discord, and email. Multi-instance platforms can bind different accounts or channels to different Agents.
-
-### Rich Artifacts
-
-Preview and manage generated HTML, SVG, images, video, Mermaid diagrams, code, Markdown, text, documents, and local service artifacts inside the desktop app.
-
-### Local Memory And Data
-
-Sessions and app data live locally in SQLite (`egoai.sqlite` under Electron `userData`). OpenClaw workspace memory uses files such as `MEMORY.md`, `USER.md`, `SOUL.md`, and daily notes, so durable preferences and project context can carry across sessions.
-
-## Real-World Prompts
-
-| Scenario | Example prompt |
+| 场景 | 示例提示词 |
 | --- | --- |
-| Build a local system | "I still track inventory and sales in Excel. Build a local inventory system that records purchases and sales, calculates stock and profit, and opens in my browser." |
-| Analyze local data | "Use `product-growth.xlsx` to build a visual dashboard and summarize the main growth drivers." |
-| Generate a deck | "Research the AI Agent market and turn the findings into a presentation." |
-| Automate browser checks | "Open the ads dashboard every morning, check spend and conversion anomalies, and summarize likely causes." |
-| Screen documents | "Turn the resumes in this folder into a screening sheet and shortlist the strongest candidates against the JD." |
-| Run scheduled work | "Every weekday at 9 AM, collect yesterday's AI news and send me a concise digest." |
+| 搭建本地系统 | 「我还在用 Excel 记库存和销售。帮我搭一个本地库存系统，记录进货与销售、计算库存与利润，并在浏览器里打开。」 |
+| 分析本地数据 | 「用 `product-growth.xlsx` 做一个可视化看板，并总结主要增长驱动因素。」 |
+| 生成演示 | 「调研 AI Agent 市场，把结论做成一份演示。」 |
+| 自动化浏览器巡检 | 「每天早上打开广告后台，检查花费与转化异常，汇总可能的原因。」 |
+| 筛选简历 | 「把这个文件夹里的简历整理成筛选表，对照 JD 挑出最合适的候选人。」 |
 
-## How It Works
+## 工作原理
 
 <p align="center">
-  <img src="docs/res/architecture_v2_en.png" alt="EgoAI architecture" width="640">
+  <img src="docs/res/architecture_v2_zh.png" alt="EgoAI 架构" width="640">
 </p>
 
-- **Renderer**: React, Redux Toolkit, Tailwind, artifact renderers, settings, agent/session UI, skills, MCP, scheduled tasks, and IM configuration.
-- **Main process**: Electron lifecycle, IPC, SQLite persistence, auth, logging, OpenClaw startup, runtime repair, skill sync, IM gateways, and artifact services.
-- **OpenClaw integration**: `openclawEngineManager`, `openclawConfigSync`, `openclawRuntimeAdapter`, and `coworkEngineRouter` translate EgoAI state into OpenClaw runtime behavior.
+- **渲染进程**：React、Redux Toolkit、Tailwind、Artifact 渲染器、设置、Agent/会话 UI、技能、MCP 与皮肤。
+- **主进程**：Electron 生命周期、IPC、SQLite 持久化、认证、日志、OpenClaw 启动、运行时修复、技能同步与 Artifact 服务。
+- **OpenClaw 集成**：`openclawEngineManager`、`openclawConfigSync`、`openclawRuntimeAdapter` 与 `coworkEngineRouter` 将 EgoAI 状态翻译为 OpenClaw 运行时行为。
 
-## Install
+## 安装
 
-### Run From Source
+### 从源码运行
 
-Requirements:
+要求：
 
 - Node.js `>=24.15.0 <25`
 - npm
@@ -125,76 +94,76 @@ cd EgoAI
 npm install
 ```
 
-First development run:
+首次开发运行：
 
 ```bash
 npm run electron:dev:openclaw
 ```
 
-Daily development after the pinned OpenClaw runtime exists:
+在固定 OpenClaw 运行时已就绪后的日常开发：
 
 ```bash
 npm run electron:dev
 ```
 
-The renderer dev server runs at `http://localhost:5175`.
+渲染进程开发服务器运行在 `http://localhost:5175`。
 
-## Developing
+## 开发
 
 ```bash
-# Production renderer bundle
+# 生产渲染包
 npm run build
 
-# Electron main/preload TypeScript build
+# Electron 主进程/preload TypeScript 构建
 npm run compile:electron
 
-# Official Vitest entry used by CI
+# CI 使用的官方 Vitest 入口
 npm test
 
-# Full ESLint across src; may expose existing legacy debt
+# 全量 ESLint（可能暴露既有历史债务）
 npm run lint
 
-# CI-style lint for touched TypeScript files
+# 对改动文件的 CI 级 lint
 npx eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 <files>
 ```
 
-### OpenClaw Runtime
+### OpenClaw 运行时
 
-The pinned OpenClaw version and third-party plugin list live in `package.json` under `openclaw`.
+固定的 OpenClaw 版本与三方插件清单位于 `package.json` 的 `openclaw` 字段。
 
 ```bash
-# Build the current-platform runtime manually
+# 手动构建当前平台运行时
 npm run openclaw:runtime:host
 
-# Use a custom OpenClaw source checkout
+# 使用自定义 OpenClaw 源码检出
 OPENCLAW_SRC=/path/to/openclaw npm run electron:dev:openclaw
 
-# Force runtime rebuild
+# 强制重建运行时
 OPENCLAW_FORCE_BUILD=1 npm run electron:dev:openclaw
 
-# Keep a local OpenClaw checkout on its current branch/tag
+# 让本地 OpenClaw 检出停留在当前分支/tag
 OPENCLAW_SKIP_ENSURE=1 npm run electron:dev:openclaw
 ```
 
-### DeepSeek Harness Runtime
+### DeepSeek Harness 运行时
 
-The pinned dsh version and one archive descriptor per platform live in `package.json` under `dsh`. Development reads `vendor/dsh-runtime/current`; shipped apps download the archive on first use and verify it against the digest they carry.
+固定的 dsh 版本与每个平台的归档描述符位于 `package.json` 的 `dsh` 字段。开发时读取 `vendor/dsh-runtime/current`；发布版应用首次使用时下载归档并按自带摘要校验。
 
 ```bash
-# Build and activate the current-platform runtime
+# 构建并启用当前平台运行时
 npm run dsh:runtime:host
 
-# Boot it once and assert the web UI answers
+# 启动一次并断言 Web UI 有响应
 npm run dsh:runtime:verify
 
-# Full gate: build, pack, install over HTTP, boot, delegate a coding task
+# 完整门禁：构建、打包、HTTP 安装、启动、委派编码任务
 npm run dsh:e2e
 ```
 
-## Packaging
+## 打包
 
 <details>
-<summary>Build desktop installers</summary>
+<summary>构建桌面安装包</summary>
 
 ```bash
 # macOS
@@ -210,35 +179,38 @@ npm run dist:win
 npm run dist:linux
 ```
 
-Packaging bundles the OpenClaw runtime under `Resources/cfmind`. Windows builds also bundle a portable Python runtime under `resources/python-win`, so end users do not need to install Python manually.
+打包会把 OpenClaw 运行时打进 `Resources/cfmind`。Windows 构建还会附带便携版 Python 运行时（`resources/python-win`），终端用户无需手动安装 Python。
 
 </details>
 
-## Project Map
+## 项目地图
 
-| Path | Purpose |
+| 路径 | 用途 |
 | --- | --- |
-| `src/main/main.ts` | Electron lifecycle, IPC registration, auth, logging, runtime startup, and service wiring |
-| `src/main/libs/openclawEngineManager.ts` | OpenClaw gateway process, runtime state, ports, logs, restart, and repair |
-| `src/main/libs/openclawConfigSync.ts` | Renders EgoAI providers, models, agents, IM bindings, skills, MCP, and workspace instructions into OpenClaw config |
-| `src/main/libs/agentEngine/openclawRuntimeAdapter.ts` | Translates OpenClaw gateway events into Cowork stream events |
-| `src/main/coworkStore.ts` | Cowork sessions, messages, config, agents, memory metadata, and SQLite CRUD |
-| `src/renderer/components/cowork/` | Main Cowork UI, prompt input, session detail, permissions, thinking/tool display, media, and voice input |
-| `src/renderer/components/agent/` | Agent creation and settings UI |
-| `src/renderer/components/skills/` | Skill management UI |
-| `src/renderer/components/mcp/` | MCP server management UI |
-| `src/renderer/components/scheduledTasks/` | Scheduled task list, form, detail, run history, and templates |
-| `src/renderer/services/i18n.ts` | Renderer i18n dictionary and `t()` helper |
-| `SKILLs/` | Bundled EgoAI skills |
+| `src/main/main.ts` | Electron 生命周期、IPC 注册、认证、日志、运行时启动与服务装配 |
+| `src/main/libs/openclawEngineManager.ts` | OpenClaw 网关进程、运行时状态、端口、日志、重启与修复 |
+| `src/main/libs/openclawConfigSync.ts` | 把 EgoAI 的 providers、模型、Agent、技能、MCP 与工作区指令渲染进 OpenClaw 配置 |
+| `src/main/libs/agentEngine/openclawRuntimeAdapter.ts` | 把 OpenClaw 网关事件翻译为 Cowork 流事件 |
+| `src/main/coworkStore.ts` | Cowork 会话、消息、配置、Agent、记忆元数据与 SQLite CRUD |
+| `src/main/skills/` | 技能管理（内置技能同步、安装/升级、启用状态） |
+| `src/main/mcp/` | MCP 服务器存储与运行时 |
+| `src/renderer/components/cowork/` | 主要 Cowork UI、提示输入、会话详情、权限、思考/工具展示、媒体与语音输入 |
+| `src/renderer/components/agent/` | Agent 创建与设置 UI |
+| `src/renderer/components/skills/` | 技能管理 UI |
+| `src/renderer/components/mcp/` | MCP 服务器管理 UI |
+| `src/renderer/components/kits/` | 专家套件 UI |
+| `src/renderer/components/artifacts/` | Artifact 面板、徽章与渲染器 |
+| `src/renderer/services/i18n.ts` | 渲染进程 i18n 字典与 `t()` 助手 |
+| `SKILLs/` | 内置 EgoAI 技能 |
 
-## Security And Data
+## 安全与数据
 
-- Renderer windows use context isolation, disabled Node integration, and sandboxing.
-- Renderer-to-main access goes through preload IPC APIs.
-- Sensitive tool actions are permission-gated and logged.
-- App data is stored locally in `egoai.sqlite` under Electron `userData` (`EgoAI`).
-- OpenClaw state, workspace memory, generated config, and gateway logs live under `userData/openclaw`.
+- 渲染窗口启用 context isolation、禁用 Node 集成并使用沙箱。
+- 渲染进程到主进程的访问走 preload IPC 接口。
+- 敏感工具操作按权限门控并记录日志。
+- 应用数据保存在 Electron `userData`（`EgoAI`）下的本地 `egoai.sqlite`。
+- OpenClaw 状态、工作区记忆、生成的配置与网关日志位于 `userData/openclaw`。
 
-## License
+## 许可
 
 [MIT License](LICENSE)
