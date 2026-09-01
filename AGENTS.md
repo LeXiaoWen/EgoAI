@@ -487,6 +487,23 @@ Scheduled tasks:
 - `scheduled_task_meta` stores only local origin/binding data that OpenClaw cron
   jobs do not support as custom fields.
 
+## Versioning
+
+This project uses CalVer in `YYYY.M.PATCH` form, e.g. `2026.9.1`. The version
+lives only in `package.json` `version`. Bump it by editing that field or running
+`npm version <version> --no-git-tag-version` (do not let npm tag); commit the
+bump as a conventional commit and create a matching tag:
+
+```bash
+npm version 2026.9.2 --no-git-tag-version
+git commit -am "chore: bump version to 2026.9.2"
+git tag v2026.9.2
+```
+
+Every release gets a `v<version>` git tag (e.g. `v2026.9.1`). Update-check
+version comparison (`src/main/libs/appUpdateCoordinator.ts` `compareVersions`)
+splits on `.` and compares numerically, so it handles CalVer without changes.
+
 ## Branches, Commits, And PRs
 
 Use branch names like `feat/...` or `fix/...`. Do not use a `codex/...` prefix
