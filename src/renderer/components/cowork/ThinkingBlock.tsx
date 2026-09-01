@@ -3,11 +3,6 @@ import React, { useEffect, useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
 import type { CoworkMessage } from '../../types/cowork';
-import {
-  bucketLength,
-  getMessageLineCount,
-  reportConversationBlockAction,
-} from './conversationAnalytics';
 
 const ThinkingBlock: React.FC<{
   message: CoworkMessage;
@@ -25,16 +20,7 @@ const ThinkingBlock: React.FC<{
   const displayContent = mapDisplayText ? mapDisplayText(message.content) : message.content;
   const handleToggleExpanded = () => {
     const nextExpanded = !isExpanded;
-    reportConversationBlockAction({
-      actionType: nextExpanded ? 'thinking_expand' : 'thinking_collapse',
-      blockType: 'thinking',
-      params: {
-        isStreaming: isCurrentlyStreaming,
-        thinkingLength: displayContent.length,
-        thinkingLengthBucket: bucketLength(displayContent.length),
-        thinkingLineCount: getMessageLineCount(displayContent),
-      },
-    });
+    
     setIsExpanded(nextExpanded);
   };
 

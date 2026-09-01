@@ -23,9 +23,6 @@ import {
   getCoworkOpenAICompatProxyStatus,
   type OpenAICompatProxyTarget,
 } from './coworkOpenAICompatProxy';
-import { readOpenAICodexAuthFile } from './openaiCodexAuth';
-import { getOpenClawTokenProxyPort } from './openclawTokenProxy';
-import { hasXaiOAuthCredential } from './xaiAuth';
 
 type LocalProviderConfig = Omit<ProviderConfig, 'apiFormat'> & { apiFormat?: ApiFormat | 'native' };
 
@@ -463,7 +460,7 @@ type MatchedProvider = {
 };
 
 function getEffectiveProviderApiFormat(providerName: string, apiFormat: unknown): AnthropicApiFormat {
-  if (providerName === ProviderName.OpenAI || providerName === ProviderName.Gemini || providerName === ProviderName.Xai || providerName === ProviderName.StepFun || providerName === ProviderName.Youdaozhiyun || providerName === ProviderName.Copilot) {
+  if (providerName === ProviderName.OpenAI || providerName === ProviderName.Gemini || providerName === ProviderName.Xai || providerName === ProviderName.StepFun || providerName === ProviderName.Youdaozhiyun) {
     return 'openai';
   }
   if (providerName === ProviderName.Anthropic) {
@@ -474,8 +471,7 @@ function getEffectiveProviderApiFormat(providerName: string, apiFormat: unknown)
 
 function providerRequiresApiKey(providerName: string): boolean {
   return providerName !== ProviderName.Ollama
-    && providerName !== ProviderName.LmStudio
-    && providerName !== ProviderName.Copilot;
+    && providerName !== ProviderName.LmStudio;
 }
 
 function shouldUseOpenAICodexOAuth(providerName: string, providerConfig: LocalProviderConfig): boolean {
@@ -488,7 +484,9 @@ function shouldUseOpenAICodexOAuth(providerName: string, providerConfig: LocalPr
   if (providerConfig.apiKey?.trim()) {
     return false;
   }
-  return readOpenAICodexAuthFile() !== null;
+  // OpenAI Codex OAuth login (local auth file) was removed; without an API key
+  // an 'oauth' config has no usable credential.
+  return false;
 }
 
 /**
@@ -630,9 +628,9 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
     return { matched: null, error: 'MiniMax OAuth mode selected but login not completed.' };
   }
 
-  // xAI OAuth mode guard: without a credential in the OpenClaw auth-profiles
-  // store the provider cannot serve requests yet.
-  if (shouldUseXaiOAuth(providerName, providerConfig) && !hasXaiOAuthCredential()) {
+  // xAI OAuth mode guard: the OAuth credential store was removed, so an
+  // 'oauth' config has no usable credential and cannot serve requests.
+  if (shouldUseXaiOAuth(providerName, providerConfig)) {
     const serverFallback = tryEgoaiServerFallback(modelId);
     if (serverFallback) return { matched: serverFallback };
     return { matched: null, error: 'xAI OAuth mode selected but login not completed.' };
@@ -657,8 +655,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
   const hasApiKey = providerConfig.apiKey?.trim();
   const hasOAuthCreds =
     (providerName === ProviderName.Minimax && (providerConfig as any).authType === 'oauth' && !!(providerConfig as any).oauthAccessToken?.trim())
-    || shouldUseOpenAICodexOAuth(providerName, providerConfig)
-    || (shouldUseXaiOAuth(providerName, providerConfig) && hasXaiOAuthCredential());
+    || shouldUseOpenAICodexOAuth(providerName, providerConfig);
   if (apiFormat === 'anthropic' && providerRequiresApiKey(providerName) && !providerConfig.apiKey?.trim() && !hasApiKey && !hasOAuthCreds) {
     const serverFallback = tryEgoaiServerFallback(modelId);
     if (serverFallback) return { matched: serverFallback };
@@ -887,17 +884,6 @@ export function resolveRawApiConfig(): ApiConfigResolution {
 export function resolveAllProviderApiKeys(): Record<string, string> {
   const result: Record<string, string> = {};
 
-  // lobsterai-server token is now managed by the token proxy
-  // (openclawTokenProxy.ts) — no longer injected as an env var.
-  const shouldInjectServerToken = !getOpenClawTokenProxyPort();
-  if (shouldInjectServerToken) {
-    const tokens = authTokensGetter?.();
-    const serverBaseUrl = serverBaseUrlGetter?.();
-    if (tokens?.accessToken && serverBaseUrl) {
-      result.SERVER = tokens.accessToken;
-    }
-  }
-
   // All configured custom providers
   const sqliteStore = getStore();
   if (!sqliteStore) return result;
@@ -927,7 +913,7 @@ export function resolveAllProviderApiKeys(): Record<string, string> {
   }
 
   const D = gwDiagTs;
-  console.log(`${D()} resolveAllProviderApiKeys: hasServer=${!!result.SERVER} providers=[${Object.keys(result).filter(k => k !== 'SERVER').join(',')}]`);
+  console.log(`${D()} resolveAllProviderApiKeys: providers=[${Object.keys(result).join(',')}]`);
 
   return result;
 }
@@ -1032,25 +1018,6 @@ export function resolveAllEnabledProviderConfigs(): ProviderRawConfig[] {
       continue;
     }
 
-    // xAI OAuth: declare the provider only once login has completed, so the
-    // gateway never sees an xai provider it cannot authenticate.
-    if (shouldUseXaiOAuth(providerName, providerConfig)) {
-      if (!hasXaiOAuthCredential()) continue;
-      const baseURL = providerConfig.baseUrl?.trim() || 'https://api.x.ai/v1';
-      const models = normalizeProviderModels(providerName, providerConfig.models);
-      if (models.length === 0) continue;
-      result.push({
-        providerName,
-        baseURL,
-        apiKey: '',
-        apiType: 'openai',
-        authType: 'oauth',
-        codingPlanEnabled: false,
-        models,
-      });
-      continue;
-    }
-
     const apiKey = providerConfig.apiKey?.trim() || '';
     if (!apiKey && providerRequiresApiKey(providerName)) continue;
 
@@ -1082,16 +1049,4 @@ export function resolveAllEnabledProviderConfigs(): ProviderRawConfig[] {
   }
 
   return result;
-}
-
-/**
- * Returns the long-lived GitHub OAuth token used by OpenClaw's built-in
- * github-copilot provider to exchange for short-lived Copilot API tokens.
- * OpenClaw reads this from the COPILOT_GITHUB_TOKEN env var.
- */
-export function getCopilotGithubToken(): string | null {
-  const sqliteStore = getStore();
-  if (!sqliteStore) return null;
-  const token = sqliteStore.get<string>('github_copilot_github_token');
-  return token?.trim() || null;
 }

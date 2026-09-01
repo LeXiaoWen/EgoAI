@@ -6,7 +6,6 @@ import {
   canConfigureModelThinking,
   CascadeSide,
   countVisibleModelSelectorRows,
-  isModelAgenticBlocked,
   partitionModelSelectorModels,
   resolveCascadePlacement,
   resolveDropdownListMaxHeight,
@@ -205,33 +204,7 @@ test('ignores levels the model does not offer', () => {
   })).toBe(ModelThinkingLevel.High);
 });
 
-test('blocks only explicitly unready server models from agent selection', () => {
-  expect(isModelAgenticBlocked({
-    isServerModel: true,
-    runtimeProfile: 'moonshot-kimi-k3',
-    agenticReady: false,
-  })).toBe(true);
-  expect(isModelAgenticBlocked({
-    isServerModel: true,
-    runtimeProfile: 'moonshot-kimi-k3',
-  })).toBe(true);
-  expect(isModelAgenticBlocked({
-    isServerModel: true,
-    runtimeProfile: 'moonshot-kimi-k3',
-    agenticReady: true,
-  })).toBe(false);
-  expect(isModelAgenticBlocked({
-    isServerModel: true,
-    agenticReady: false,
-  })).toBe(false);
-  expect(isModelAgenticBlocked({
-    isServerModel: false,
-    runtimeProfile: 'moonshot-kimi-k3',
-    agenticReady: false,
-  })).toBe(false);
-});
-
-test('allows thinking changes only for capable, accessible, and ready models', () => {
+test('allows thinking changes only for capable, accessible models', () => {
   const thinkingConfig = {
     options: [
       { level: 'off' as const, openclawLevel: 'off' as const },
@@ -240,36 +213,16 @@ test('allows thinking changes only for capable, accessible, and ready models', (
     ],
     defaultLevel: 'high' as const,
   };
-  expect(canConfigureModelThinking({
+  const config = (overrides: Record<string, unknown> = {}) => ({
     accessible: true,
-    isServerModel: true,
     requestCapabilities: [EgoAIRequestCapability.OptionsV1],
     thinkingConfig: { options: thinkingConfig.options.map(option => ({ ...option })), defaultLevel: thinkingConfig.defaultLevel },
-  })).toBe(true);
-  expect(canConfigureModelThinking({
-    accessible: true,
-    isServerModel: true,
-    thinkingConfig: { options: thinkingConfig.options.map(option => ({ ...option })), defaultLevel: thinkingConfig.defaultLevel },
-  })).toBe(false);
-  expect(canConfigureModelThinking({
-    accessible: false,
-    isServerModel: true,
-    requestCapabilities: [EgoAIRequestCapability.OptionsV1],
-    thinkingConfig: { options: thinkingConfig.options.map(option => ({ ...option })), defaultLevel: thinkingConfig.defaultLevel },
-  })).toBe(false);
-  expect(canConfigureModelThinking({
-    accessible: true,
-    isServerModel: true,
-    runtimeProfile: 'moonshot-kimi-k3',
-    agenticReady: false,
-    requestCapabilities: [EgoAIRequestCapability.OptionsV1],
-    thinkingConfig: { options: thinkingConfig.options.map(option => ({ ...option })), defaultLevel: thinkingConfig.defaultLevel },
-  })).toBe(false);
-  expect(canConfigureModelThinking({
-    accessible: true,
-    isServerModel: true,
-    requestCapabilities: [EgoAIRequestCapability.OptionsV1],
-  })).toBe(false);
+    ...overrides,
+  });
+  expect(canConfigureModelThinking(config())).toBe(true);
+  expect(canConfigureModelThinking(config({ requestCapabilities: undefined }))).toBe(false);
+  expect(canConfigureModelThinking(config({ accessible: false }))).toBe(false);
+  expect(canConfigureModelThinking(config({ thinkingConfig: undefined }))).toBe(false);
 });
 
 test('hides the thinking protocol entry when request-options support is absent', () => {

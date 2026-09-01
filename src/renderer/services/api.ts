@@ -257,8 +257,7 @@ class ApiService {
 
   private providerRequiresApiKey(provider: string): boolean {
     return provider !== ProviderName.Ollama
-      && provider !== ProviderName.LmStudio
-      && provider !== ProviderName.Copilot;
+      && provider !== ProviderName.LmStudio;
   }
 
   // 检测当前选择的模型属于哪个 provider
@@ -267,7 +266,7 @@ class ApiService {
     if (
       normalizedHint
       && (
-        ['openai', 'deepseek', 'moonshot', 'zhipu', 'minimax', 'youdaozhiyun', 'qwen', 'openrouter', 'gemini', 'anthropic', 'xiaomi', 'stepfun', 'volcengine', 'github-copilot', 'ollama', 'lm-studio'].includes(normalizedHint)
+        ['openai', 'deepseek', 'moonshot', 'zhipu', 'minimax', 'youdaozhiyun', 'qwen', 'openrouter', 'gemini', 'anthropic', 'xiaomi', 'stepfun', 'volcengine', 'ollama', 'lm-studio'].includes(normalizedHint)
         || normalizedHint.startsWith('custom_')
       )
     ) {
@@ -329,44 +328,6 @@ class ApiService {
     return null;
   }
 
-  private async ensureGitHubCopilotRuntimeConfig(config: ApiConfig): Promise<ApiConfig> {
-    const runtimeCredential = this.providerRuntimeCredentials[ProviderName.Copilot];
-    if (runtimeCredential?.apiKey) {
-      return {
-        ...config,
-        apiKey: runtimeCredential.apiKey,
-        ...(runtimeCredential.baseUrl ? { baseUrl: runtimeCredential.baseUrl } : {}),
-      };
-    }
-
-    try {
-      const result = await window.electron.githubCopilot.refreshToken();
-      if (result.success && result.token) {
-        const credential: ProviderRuntimeCredential = {
-          apiKey: result.token,
-          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-        };
-        this.setProviderRuntimeCredential(ProviderName.Copilot, credential);
-        return {
-          ...config,
-          apiKey: result.token,
-          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-        };
-      }
-      if (result.error) {
-        console.warn('[api-chat] Copilot token refresh returned an error:', result.error);
-      }
-    } catch (error) {
-      console.warn('[api-chat] Copilot token refresh failed:', error);
-    }
-
-    if (config.apiKey) {
-      return config;
-    }
-
-    throw new ApiError('GitHub Copilot authentication is not available. Please sign in again.');
-  }
-
   async chat(
     message: string | ChatUserMessageInput,
     onProgress?: (content: string, reasoning?: string) => void,
@@ -393,10 +354,6 @@ class ApiService {
       effectiveConfig = providerConfig;
     }
 
-    if (provider === ProviderName.Copilot) {
-      effectiveConfig = await this.ensureGitHubCopilotRuntimeConfig(effectiveConfig);
-    }
-
     if (this.providerRequiresApiKey(provider) && !effectiveConfig.apiKey) {
       throw new ApiError('API key is not configured. Please set your API key in the settings menu.');
     }
@@ -416,37 +373,7 @@ class ApiService {
       return this.chatWithAnthropic(userMessage, onProgress, history, selectedModel.id, effectiveConfig, supportsImages);
     }
 
-    try {
-      return await this.chatWithOpenAICompatible(userMessage, onProgress, history, selectedModel.id, effectiveConfig, supportsImages, provider);
-    } catch (error) {
-      // Auto-retry once for GitHub Copilot auth errors (401 / token expired)
-      if (
-        provider === ProviderName.Copilot
-        && error instanceof ApiError
-        && (error.statusCode === 401 || error.statusCode === 403)
-      ) {
-        console.log('[api-chat] Copilot auth error detected, attempting token refresh and retry');
-        try {
-          const result = await window.electron.githubCopilot.refreshToken();
-          if (result.success && result.token) {
-            const credential: ProviderRuntimeCredential = {
-              apiKey: result.token,
-              ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-            };
-            this.setProviderRuntimeCredential(ProviderName.Copilot, credential);
-            const refreshedConfig: ApiConfig = {
-              ...effectiveConfig,
-              apiKey: result.token,
-              ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-            };
-            return await this.chatWithOpenAICompatible(userMessage, onProgress, history, selectedModel.id, refreshedConfig, supportsImages, provider);
-          }
-        } catch (refreshError) {
-          console.warn('[api-chat] Copilot token refresh failed, throwing original error:', refreshError);
-        }
-      }
-      throw error;
-    }
+    return this.chatWithOpenAICompatible(userMessage, onProgress, history, selectedModel.id, effectiveConfig, supportsImages, provider);
   }
 
   // Anthropic API 调用
@@ -944,14 +871,6 @@ class ApiService {
             headers.Authorization = `Bearer ${config.apiKey}`;
           }
         }
-        if (provider === ProviderName.Copilot) {
-          headers['Copilot-Integration-Id'] = 'vscode-chat';
-          headers['Editor-Version'] = 'vscode/1.96.2';
-          headers['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
-          headers['User-Agent'] = 'GitHubCopilotChat/0.26.7';
-          headers['Openai-Intent'] = 'conversation-panel';
-        }
-
         const requestUrl = useResponsesApi
           ? this.buildOpenAIResponsesUrl(config.baseUrl)
           : this.buildOpenAICompatibleChatCompletionsUrl(config.baseUrl);

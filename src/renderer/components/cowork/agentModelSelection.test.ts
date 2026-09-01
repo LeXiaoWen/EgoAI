@@ -13,9 +13,9 @@ const models: Model[] = [
   { id: 'gpt-4o', name: 'GPT-4o', providerKey: 'openai' },
   { id: 'claude-sonnet-4', name: 'Claude Sonnet 4', providerKey: 'anthropic' },
   { id: 'deepseek-v3.2', name: 'DeepSeek', providerKey: 'anthropic' },
-  { id: 'deepseek-v3.2', name: 'DeepSeek Server', providerKey: 'openai', isServerModel: true },
+  { id: 'deepseek-v3.2', name: 'DeepSeek Server', providerKey: 'openai' },
   { id: 'kimi-k2.6', name: 'Kimi K2.6', providerKey: 'moonshot' },
-  { id: 'kimi-k2.6', name: 'Kimi K2.6 Server', providerKey: 'lobsterai-server', isServerModel: true },
+  { id: 'kimi-k2.6', name: 'Kimi K2.6 Server', providerKey: 'lobsterai-server' },
 ];
 
 const visionModel: Model = { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', providerKey: 'qwen', supportsImage: true };
@@ -91,7 +91,7 @@ describe('resolveAgentModelSelection', () => {
     expect(result.hasInvalidExplicitModel).toBe(false);
   });
 
-  test('resolves same-id server session model to the server model', () => {
+  test('resolves explicit session model ref with a provider prefix to the matching model', () => {
     const result = resolveAgentModelSelection({
       sessionModel: 'lobsterai-server/kimi-k2.6',
       agentModel: 'moonshot/kimi-k2.6',
@@ -101,12 +101,11 @@ describe('resolveAgentModelSelection', () => {
     });
 
     expect(result.selectedModel?.providerKey).toBe('lobsterai-server');
-    expect(result.selectedModel?.isServerModel).toBe(true);
     expect(result.usesFallback).toBe(false);
     expect(result.hasInvalidExplicitModel).toBe(false);
   });
 
-  test('resolves same-id server agent model to the server model', () => {
+  test('resolves explicit agent model ref with a provider prefix to the matching model', () => {
     const result = resolveAgentModelSelection({
       agentModel: 'lobsterai-server/kimi-k2.6',
       availableModels: models,
@@ -115,7 +114,6 @@ describe('resolveAgentModelSelection', () => {
     });
 
     expect(result.selectedModel?.providerKey).toBe('lobsterai-server');
-    expect(result.selectedModel?.isServerModel).toBe(true);
     expect(result.usesFallback).toBe(false);
     expect(result.hasInvalidExplicitModel).toBe(false);
   });

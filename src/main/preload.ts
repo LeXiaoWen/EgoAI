@@ -5,15 +5,6 @@ import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactPreviewIpc } from '../shared/artifactPreview/constants';
-import {
-  AsrIpcChannel,
-  type AsrRealtimeSessionRequest,
-} from '../shared/asr/constants';
-import {
-  AuthIpcChannel,
-  type AuthLifecycleEvent,
-  type AuthSessionChangedEvent,
-} from '../shared/auth/constants';
 import { BrowserIpc, type BrowserRuntimeProfile } from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
 import type { CoworkBrowserAnnotationMessageBatch } from '../shared/cowork/browserAnnotations';
@@ -745,10 +736,6 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener(LibraryIpc.Changed, handler);
     },
   },
-  asr: {
-    createRealtimeSession: (options: AsrRealtimeSessionRequest) =>
-      ipcRenderer.invoke(AsrIpcChannel.CreateRealtimeSession, options),
-  },
   artifact: {
     watchFile: (filePath: string) => ipcRenderer.invoke('artifact:watchFile', filePath),
     unwatchFile: (filePath: string) => ipcRenderer.invoke('artifact:unwatchFile', filePath),
@@ -860,44 +847,6 @@ contextBridge.exposeInMainWorld('electron', {
   networkStatus: {
     send: (status: 'online' | 'offline') => ipcRenderer.send('network:status-change', status),
   },
-  auth: {
-    login: (loginUrl?: string) => ipcRenderer.invoke(AuthIpcChannel.Login, { loginUrl }),
-    exchange: (code: string) => ipcRenderer.invoke(AuthIpcChannel.Exchange, { code }),
-    getUser: () => ipcRenderer.invoke(AuthIpcChannel.GetUser),
-    getQuota: () => ipcRenderer.invoke(AuthIpcChannel.GetQuota),
-    logout: () => ipcRenderer.invoke(AuthIpcChannel.Logout),
-    refreshToken: () => ipcRenderer.invoke(AuthIpcChannel.RefreshToken),
-    getAccessToken: () => ipcRenderer.invoke(AuthIpcChannel.GetAccessToken),
-    getModels: () => ipcRenderer.invoke(AuthIpcChannel.GetModels),
-    getPricingCatalog: () => ipcRenderer.invoke(AuthIpcChannel.GetPricingCatalog),
-    getProfileSummary: () => ipcRenderer.invoke(AuthIpcChannel.GetProfileSummary),
-    claimCreditsFinalReward: (campaignCode: string) =>
-      ipcRenderer.invoke(AuthIpcChannel.ClaimCreditsFinalReward, { campaignCode }),
-    getActiveClientBanner: () => ipcRenderer.invoke(AuthIpcChannel.GetActiveClientBanner),
-    getActiveClientBanners: () => ipcRenderer.invoke(AuthIpcChannel.GetActiveClientBanners),
-    getClientBannerSnapshot: () => ipcRenderer.invoke(AuthIpcChannel.GetClientBannerSnapshot),
-    getPendingCallback: () => ipcRenderer.invoke(AuthIpcChannel.GetPendingCallback),
-    onCallback: (callback: (data: { code: string }) => void) => {
-      const handler = (_event: any, data: { code: string }) => callback(data);
-      ipcRenderer.on(AuthIpcChannel.Callback, handler);
-      return () => ipcRenderer.removeListener(AuthIpcChannel.Callback, handler);
-    },
-    onQuotaChanged: (callback: () => void) => {
-      const handler = () => callback();
-      ipcRenderer.on(AuthIpcChannel.QuotaChanged, handler);
-      return () => ipcRenderer.removeListener(AuthIpcChannel.QuotaChanged, handler);
-    },
-    onSessionChanged: (callback: (event: AuthSessionChangedEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: AuthSessionChangedEvent) => callback(data);
-      ipcRenderer.on(AuthIpcChannel.SessionChanged, handler);
-      return () => ipcRenderer.removeListener(AuthIpcChannel.SessionChanged, handler);
-    },
-    onLifecycleEvent: (callback: (event: AuthLifecycleEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: AuthLifecycleEvent) => callback(data);
-      ipcRenderer.on(AuthIpcChannel.LifecycleEvent, handler);
-      return () => ipcRenderer.removeListener(AuthIpcChannel.LifecycleEvent, handler);
-    },
-  },
   media: {
     getModels: (type: 'image' | 'video') =>
       ipcRenderer.invoke(CoworkIpcChannel.GetMediaModels, type) as Promise<{ success: boolean; models?: unknown[]; error?: string }>,
@@ -949,92 +898,6 @@ contextBridge.exposeInMainWorld('electron', {
           success: boolean;
           error?: string;
         }>,
-    },
-  },
-  githubCopilot: {
-    requestDeviceCode: () =>
-      ipcRenderer.invoke('github-copilot:request-device-code') as Promise<{
-        userCode: string;
-        verificationUri: string;
-        deviceCode: string;
-        interval: number;
-        expiresIn: number;
-      }>,
-    pollForToken: (deviceCode: string, interval: number, expiresIn: number) =>
-      ipcRenderer.invoke('github-copilot:poll-for-token', {
-        deviceCode,
-        interval,
-        expiresIn,
-      }) as Promise<{
-        success: boolean;
-        token?: string;
-        githubUser?: string;
-        baseUrl?: string;
-        error?: string;
-      }>,
-    cancelPolling: () => ipcRenderer.invoke('github-copilot:cancel-polling') as Promise<void>,
-    signOut: () => ipcRenderer.invoke('github-copilot:sign-out') as Promise<void>,
-    refreshToken: () =>
-      ipcRenderer.invoke('github-copilot:refresh-token') as Promise<{
-        success: boolean;
-        token?: string;
-        baseUrl?: string;
-        error?: string;
-      }>,
-    onTokenUpdated: (callback: (data: { token: string; baseUrl: string }) => void) => {
-      const handler = (_event: unknown, data: { token: string; baseUrl: string }) => callback(data);
-      ipcRenderer.on('github-copilot:token-updated', handler);
-      return () => ipcRenderer.removeListener('github-copilot:token-updated', handler);
-    },
-  },
-  openaiCodexOAuth: {
-    start: () =>
-      ipcRenderer.invoke('openai-codex-oauth:start') as Promise<
-        | { success: true; email: string | null; accountId: string | null; expiresAt: number }
-        | { success: false; error: string }
-      >,
-    cancel: () => ipcRenderer.invoke('openai-codex-oauth:cancel') as Promise<void>,
-    logout: () => ipcRenderer.invoke('openai-codex-oauth:logout') as Promise<void>,
-    status: () =>
-      ipcRenderer.invoke('openai-codex-oauth:status') as Promise<
-        | { loggedIn: true; email: string | null; accountId: string | null; expiresAt: number }
-        | { loggedIn: false }
-      >,
-  },
-  xaiOAuth: {
-    start: () =>
-      ipcRenderer.invoke('xai-oauth:start') as Promise<
-        | { success: true; email: string | null; flow: 'browser' | 'device-code' }
-        | { success: false; error: string }
-      >,
-    cancel: () => ipcRenderer.invoke('xai-oauth:cancel') as Promise<void>,
-    logout: () => ipcRenderer.invoke('xai-oauth:logout') as Promise<void>,
-    status: () =>
-      ipcRenderer.invoke('xai-oauth:status') as Promise<{
-        loggedIn: boolean;
-        email?: string;
-        displayName?: string;
-        expiresAt?: number;
-      }>,
-    onDeviceCode: (
-      callback: (info: {
-        userCode: string;
-        verificationUri: string;
-        verificationUriComplete?: string;
-        expiresInMs: number;
-      }) => void,
-    ) => {
-      const handler = (
-        _event: unknown,
-        info: {
-          userCode: string;
-          verificationUri: string;
-          verificationUriComplete?: string;
-          expiresInMs: number;
-        },
-      ) => callback(info);
-      ipcRenderer.on('xai-oauth:device-code', handler);
-      return () => ipcRenderer.removeListener('xai-oauth:device-code', handler);
     },
   },
 });

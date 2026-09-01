@@ -3,21 +3,19 @@ import { describe, expect, test } from 'vitest';
 import type { Model } from './modelSlice';
 import modelReducer, {
   clearAgentSelectedModel,
-  clearServerModels,
   selectAgentSelectedModel,
   setAvailableModels,
   setDefaultSelectedModel,
   setSelectedModel,
-  setServerModels,
 } from './modelSlice';
 
 const modelA: Model = { id: 'gpt-4o', name: 'GPT-4o', providerKey: 'openai' };
 const modelB: Model = { id: 'glm-5.1', name: 'GLM 5.1', providerKey: 'zhipu' };
 const modelC: Model = { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet', providerKey: 'anthropic' };
-const serverModel: Model = { id: 'server-model', name: 'Server Model', providerKey: 'lobsterai-server', isServerModel: true };
+const serverModel: Model = { id: 'server-model', name: 'Server Model', providerKey: 'lobsterai-server' };
 const lockedServerModel: Model = { ...serverModel, accessible: false };
 const customKimiModel: Model = { id: 'kimi-k2.6', name: 'Kimi K2.6', providerKey: 'moonshot' };
-const serverKimiModel: Model = { id: 'kimi-k2.6', name: 'Kimi K2.6', providerKey: 'lobsterai-server', isServerModel: true };
+const serverKimiModel: Model = { id: 'kimi-k2.6', name: 'Kimi K2.6', providerKey: 'lobsterai-server' };
 
 function makeState(overrides?: Partial<ReturnType<typeof modelReducer>>) {
   const base = modelReducer(undefined, { type: 'init' });
@@ -91,101 +89,6 @@ describe('setAvailableModels', () => {
     state = modelReducer(state, setAvailableModels([updatedModelA, modelB]));
 
     expect(state.defaultSelectedModel.supportsImage).toBe(true);
-  });
-});
-
-describe('setServerModels / clearServerModels', () => {
-  test('setServerModels keeps a custom model selected when public server models are locked', () => {
-    let state = modelReducer(undefined, setAvailableModels([modelA]));
-    state = modelReducer(state, setDefaultSelectedModel(modelA));
-    state = modelReducer(state, setServerModels([lockedServerModel]));
-
-    expect(state.defaultSelectedModel).toEqual(modelA);
-    expect(state.availableModels[0]).toEqual(lockedServerModel);
-  });
-
-  test('setServerModels displays a locked server model when no custom models exist', () => {
-    let state = makeState({
-      availableModels: [],
-      defaultSelectedModel: modelA,
-      selectedModelByAgent: {},
-    });
-
-    state = modelReducer(state, setServerModels([lockedServerModel]));
-
-    expect(state.availableModels).toEqual([lockedServerModel]);
-    expect(state.defaultSelectedModel).toEqual(lockedServerModel);
-  });
-
-  test('setAvailableModels clears fallback custom models while preserving locked server models', () => {
-    let state = makeState({
-      availableModels: [lockedServerModel, modelA],
-      defaultSelectedModel: modelA,
-      selectedModelByAgent: {},
-    });
-
-    state = modelReducer(state, setAvailableModels([]));
-
-    expect(state.availableModels).toEqual([lockedServerModel]);
-    expect(state.defaultSelectedModel).toEqual(lockedServerModel);
-  });
-
-  test('setServerModels clears per-agent selections that resolve to locked server models', () => {
-    let state = makeState({
-      availableModels: [lockedServerModel, modelA],
-      defaultSelectedModel: modelA,
-      selectedModelByAgent: { 'agent-1': lockedServerModel },
-    });
-
-    state = modelReducer(state, setServerModels([lockedServerModel]));
-
-    expect(state.selectedModelByAgent['agent-1']).toBeUndefined();
-    expect(state.defaultSelectedModel).toEqual(modelA);
-  });
-
-  test('setServerModels syncs per-agent models', () => {
-    let state = modelReducer(undefined, setSelectedModel({ agentId: 'agent-1', model: serverModel }));
-    const updatedServerModel: Model = { ...serverModel, supportsImage: true };
-    state = modelReducer(state, setServerModels([updatedServerModel]));
-
-    expect(state.selectedModelByAgent['agent-1'].supportsImage).toBe(true);
-  });
-
-  test('setServerModels does not replace a same-id custom model selection', () => {
-    let state = makeState({
-      availableModels: [customKimiModel],
-      defaultSelectedModel: customKimiModel,
-      selectedModelByAgent: { 'agent-1': customKimiModel },
-    });
-
-    state = modelReducer(state, setServerModels([serverKimiModel]));
-
-    expect(state.defaultSelectedModel).toEqual(customKimiModel);
-    expect(state.selectedModelByAgent['agent-1']).toEqual(customKimiModel);
-  });
-
-  test('setAvailableModels does not replace a same-id server model selection', () => {
-    let state = makeState({
-      availableModels: [serverKimiModel],
-      defaultSelectedModel: serverKimiModel,
-      selectedModelByAgent: { 'agent-1': serverKimiModel },
-    });
-
-    state = modelReducer(state, setAvailableModels([customKimiModel]));
-
-    expect(state.defaultSelectedModel).toEqual(serverKimiModel);
-    expect(state.selectedModelByAgent['agent-1']).toEqual(serverKimiModel);
-  });
-
-  test('clearServerModels removes server model entries from per-agent map', () => {
-    let state = modelReducer(undefined, setSelectedModel({ agentId: 'agent-1', model: serverModel }));
-    // Ensure there's at least one non-server model available
-    state = modelReducer(state, setAvailableModels([modelA]));
-    state = modelReducer(state, setServerModels([serverModel]));
-    state = modelReducer(state, clearServerModels());
-
-    // serverModel no longer available → per-agent entry removed
-    expect(state.selectedModelByAgent['agent-1']).toBeUndefined();
   });
 });
 

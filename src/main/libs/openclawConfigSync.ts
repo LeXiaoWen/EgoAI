@@ -73,7 +73,6 @@ const gwDiagTs = (): string => {
   return `[GW-RESTART-DIAG] ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${sign}${p(Math.floor(abs / 60))}:${p(abs % 60)}`;
 };
 import { findBundledExtensionsDir, findThirdPartyExtensionsDir, hasBundledOpenClawExtension, hasRuntimeBundledOpenClawExtension, resolveOpenClawExtensionPluginId } from './openclawLocalExtensions';
-import { getOpenClawTokenProxyPort } from './openclawTokenProxy';
 import { getActiveSystemProxyUrl, isSystemProxyEnabled } from './systemProxy';
 
 export type AskUserCallbackConfig = {
@@ -860,19 +859,6 @@ const resolveModelMaxTokensForOpenClaw = (options: {
 };
 
 const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
-  [ProviderName.EgoaiServer]: {
-    providerId: OpenClawProviderId.EgoaiServer,
-    resolveApi: ({ apiType, baseURL }) => mapApiTypeToOpenClawApi(apiType, undefined, baseURL),
-    normalizeBaseUrl: url => {
-      const proxyPort = getOpenClawTokenProxyPort();
-      return proxyPort ? `http://127.0.0.1:${proxyPort}/v1` : stripChatCompletionsSuffix(url);
-    },
-    resolveApiKey: () => {
-      const proxyPort = getOpenClawTokenProxyPort();
-      return proxyPort ? '${LOBSTER_PROXY_TOKEN}' : `\${${providerApiKeyEnvVar('server')}}`;
-    },
-  },
-
   [ProviderName.Moonshot]: {
     providerId: OpenClawProviderId.Moonshot,
     resolveApi: ({ apiType, baseURL }) => mapApiTypeToOpenClawApi(apiType, undefined, baseURL),
@@ -901,14 +887,10 @@ const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
     normalizeBaseUrl: stripChatCompletionsSuffix,
   },
 
-  // xAI OAuth (SuperGrok / X Premium entitlement): the credential lives in the
-  // OpenClaw auth-profiles store (written by xaiAuth.ts); the bundled xai
-  // plugin injects the Bearer token and auto-refreshes it, so no API key is
-  // emitted into the provider config.
   [`${ProviderName.Xai}:oauth`]: {
     providerId: OpenClawProviderId.Xai,
     resolveApi: () => OpenClawApiConst.OpenAIResponses as OpenClawTransportApi,
-    normalizeBaseUrl: () => XAI_BASE_URL,
+    normalizeBaseUrl: stripChatCompletionsSuffix,
     resolveApiKey: () => undefined,
   },
 
@@ -930,7 +912,8 @@ const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
   [`${ProviderName.OpenAI}:oauth`]: {
     providerId: OpenClawProviderId.OpenAI,
     resolveApi: () => OpenClawApiConst.OpenAIChatGPTResponses as OpenClawTransportApi,
-    normalizeBaseUrl: () => OPENAI_CODEX_BASE_URL,
+    normalizeBaseUrl: stripChatCompletionsSuffix,
+    resolveRuntimeBaseUrl: () => OPENAI_CODEX_BASE_URL,
     resolveApiKey: () => undefined,
   },
 
@@ -964,6 +947,7 @@ const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
     resolveApi: ({ apiType, baseURL }) => mapApiTypeToOpenClawApi(apiType, undefined, baseURL),
     normalizeBaseUrl: stripChatCompletionsSuffix,
   },
+
   [`${ProviderName.Minimax}:oauth`]: {
     providerId: OpenClawProviderId.MinimaxPortal,
     resolveApi: ({ apiType, baseURL }) => mapApiTypeToOpenClawApi(apiType, undefined, baseURL),
@@ -1007,13 +991,13 @@ const PROVIDER_REGISTRY: Record<string, ProviderDescriptor> = {
     normalizeBaseUrl: stripChatCompletionsSuffix,
   },
 
-  [ProviderName.Copilot]: {
-    providerId: OpenClawProviderId.EgoaiCopilot,
-    resolveApi: () => OpenClawApiConst.OpenAICompletions as OpenClawTransportApi,
+  [ProviderName.EgoaiServer]: {
+    providerId: OpenClawProviderId.EgoaiServer,
+    resolveApi: ({ apiType, baseURL }) => mapApiTypeToOpenClawApi(apiType, undefined, baseURL),
     normalizeBaseUrl: stripChatCompletionsSuffix,
     resolveRuntimeBaseUrl: () => {
       const proxyBase = getCoworkOpenAICompatProxyBaseURL('local');
-      return proxyBase ? `${proxyBase}/v1/copilot` : null;
+      return proxyBase ? `${proxyBase}/v1` : null;
     },
     resolveApiKey: () => '${LOBSTER_PROXY_TOKEN}',
   },
@@ -1030,17 +1014,14 @@ const resolveDescriptor = (
   codingPlanEnabled: boolean,
   authType?: 'apikey' | 'oauth',
 ): ProviderDescriptor => {
-  if (providerName === ProviderName.OpenAI && authType === 'oauth') {
-    return PROVIDER_REGISTRY[`${ProviderName.OpenAI}:oauth`];
-  }
-  if (providerName === ProviderName.Minimax && authType === 'oauth') {
-    return PROVIDER_REGISTRY[`${ProviderName.Minimax}:oauth`];
-  }
-  if (providerName === ProviderName.Xai && authType === 'oauth') {
-    return PROVIDER_REGISTRY[`${ProviderName.Xai}:oauth`];
-  }
   if (codingPlanEnabled) {
     const compositeKey = `${providerName}:codingPlan`;
+    if (compositeKey in PROVIDER_REGISTRY) {
+      return PROVIDER_REGISTRY[compositeKey];
+    }
+  }
+  if (authType === 'oauth') {
+    const compositeKey = `${providerName}:oauth`;
     if (compositeKey in PROVIDER_REGISTRY) {
       return PROVIDER_REGISTRY[compositeKey];
     }
@@ -2015,15 +1996,20 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         }
       }
 
-      const proxyPort = getOpenClawTokenProxyPort();
-      if (proxyPort) {
+      // Merge the EgoAI plan (server package models) into the local OpenClaw
+      // config. The model catalog arrives via getAllServerModelMetadata() from
+      // the upstream runtime; each model is routed through the local OpenAI
+      // compatibility proxy, which injects the gateway token.
+      const proxyBase = getCoworkOpenAICompatProxyBaseURL('local');
+      if (proxyBase) {
         const providerId = OpenClawProviderId.EgoaiServer;
+        const serverBaseUrl = `${proxyBase}/v1`;
 
         if (serverModels.length > 0 || !allProvidersMap[providerId]) {
           const firstServerModelId = serverModels[0]?.modelId || modelId;
           const firstServerSel = buildProviderSelection({
             apiKey: 'proxy-managed',
-            baseURL: `http://127.0.0.1:${proxyPort}/v1`,
+            baseURL: serverBaseUrl,
             modelId: firstServerModelId,
             apiType: normalizeServerApiType(serverModels[0]?.apiFormat),
             providerName: ProviderName.EgoaiServer,
@@ -2057,7 +2043,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
               const serverApiType = normalizeServerApiType(sm.apiFormat);
               const serverSel = buildProviderSelection({
                 apiKey: 'proxy-managed',
-                baseURL: `http://127.0.0.1:${proxyPort}/v1`,
+                baseURL: serverBaseUrl,
                 modelId: sm.modelId,
                 apiType: serverApiType,
                 providerName: ProviderName.EgoaiServer,
@@ -2087,6 +2073,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           }
         }
       }
+
     }
 
     const hasModelCompatPlugin = isBundledPluginAvailable(OPENCLAW_MODEL_COMPAT_PLUGIN_ID);

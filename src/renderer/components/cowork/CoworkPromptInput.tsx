@@ -8,14 +8,12 @@ import {
   PlayCircleIcon,
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon, FolderIcon } from '@heroicons/react/24/solid';
-import { AuthSubscriptionStatus } from '@shared/auth/constants';
 import {
   BrowserAnnotationScreenshotStatus,
   type CoworkBrowserAnnotationBatch,
   type CoworkBrowserAnnotationMessageBatch,
   normalizeBrowserAnnotationBatches,
 } from '@shared/cowork/browserAnnotations';
-import { ProviderName } from '@shared/providers';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
@@ -49,23 +47,11 @@ import {
   prepareCoworkPromptPayload,
   type PreparedCoworkPromptPayload,
 } from '../../services/coworkPromptPayload';
-import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { getInstalledKitSkillIds } from '../../services/kitCapability';
-import {
-  LogReporterAction,
-  LogReporterEntry,
-  reportYdAnalyzer,
-} from '../../services/logReporter';
-import { resolveLocalizedText, skillService } from '../../services/skill';
+import { skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
-import {
-  AsrQuotaStatus,
-  ensureAsrQuotaFreshForDay,
-  getLocalAsrQuotaDayKey,
-  resetAsrQuota,
-} from '../../store/slices/asrQuotaSlice';
 import {
   addDraftAttachment,
   addPendingSteer,
@@ -119,11 +105,9 @@ import TrashIcon from '../icons/TrashIcon';
 import XMarkIcon from '../icons/XMarkIcon';
 import { ActiveKitBadge, KitsButton } from '../kits';
 import ModelSelector, {
-  isModelAgenticBlocked,
   ModelAccessPromptKind,
   ModelAccessPromptModal,
   type ModelSelectorChangeMeta,
-  ModelSelectorGroup,
 } from '../ModelSelector';
 import { ActiveSkillBadge, SkillsPopover } from '../skills';
 import {
@@ -137,26 +121,11 @@ import BrowserAnnotationAttachmentBadge from './BrowserAnnotationAttachmentBadge
 import { getClipboardAttachmentFiles } from './clipboardAttachments';
 import { CoworkUiEvent } from './constants';
 import FolderSelectorPopover from './FolderSelectorPopover';
-import {
-  getAttachmentAnalyticsParams,
-  getKitAnalyticsParams,
-  getModelAnalyticsParams,
-  getPromptAnalyticsConversationState,
-  getPromptAnalyticsSurface,
-  getPromptTextAnalyticsParams,
-  getSkillAnalyticsParams,
-  reportPromptControlAction,
-  reportPromptSubmit,
-} from './promptAnalytics';
 import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
 import { buildSelectedSkillRoutingPrompt } from './selectedSkillRoutingPrompt';
 import SelectedTextSnippetBadge from './SelectedTextSnippetBadge';
 import { buildPlanModeSystemPrompt } from './skillSystemPrompt';
 import { usePersistAgentModelSelection } from './usePersistAgentModelSelection';
-import { useCoworkVoiceInput } from './voiceInput/useCoworkVoiceInput';
-import VoiceInputButton from './voiceInput/VoiceInputButton';
-import VoiceInputRecordingStatus from './voiceInput/VoiceInputRecordingStatus';
-import { getCoworkVoiceRecordingUiState } from './voiceInput/voiceInputUiState';
 
 const logPromptModelSelection = (
   level: 'debug' | 'warn',
@@ -245,34 +214,6 @@ const SteerQueueIcon: React.FC<React.SVGProps<SVGSVGElement>> = ({ className, ..
   </svg>
 );
 
-const getModelAnalyticsSource = (model: Model, selectorGroup: ModelSelectorChangeMeta['group']): string => {
-  if (model.isServerModel || model.providerKey === ProviderName.EgoaiServer || selectorGroup === ModelSelectorGroup.Server) {
-    return 'package';
-  }
-  return 'custom';
-};
-
-const reportModelSelected = (
-  model: Model,
-  selectorGroup: ModelSelectorChangeMeta['group'],
-  target: 'agent' | 'session',
-  agentId: string,
-  sessionId?: string,
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.ModelSelected,
-    modelId: model.id,
-    modelName: model.name,
-    modelSource: getModelAnalyticsSource(model, selectorGroup),
-    providerKey: model.providerKey,
-    provider: model.provider,
-    selectorGroup,
-    target,
-    agentId,
-    sessionId,
-    isServerModel: model.isServerModel === true,
-  });
-};
 
 // CoworkAttachment is aliased from the Redux-persisted DraftAttachment type
 // so that attachment state survives view switches (cowork ↔ skills, etc.)
@@ -295,18 +236,6 @@ const showToast = (message: string): void => {
   window.dispatchEvent(new CustomEvent('app:showToast', { detail: message }));
 };
 
-const DEFAULT_FREE_ASR_LIMIT_SECONDS = 20 * 60;
-const DEFAULT_SUBSCRIBED_ASR_LIMIT_SECONDS = 200 * 60;
-
-const formatVoiceInputQuotaLimit = (seconds: number): string => {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  if (safeSeconds >= 3600 && safeSeconds % 3600 === 0) {
-    return i18nService.t('voiceInputQuotaHours').replace('{count}', `${safeSeconds / 3600}`);
-  }
-  const minutes = Math.max(1, Math.ceil(safeSeconds / 60));
-  return i18nService.t('voiceInputQuotaMinutes').replace('{count}', `${minutes}`);
-};
-
 const getFileNameFromPath = (path: string): string => {
   const parts = path.split(/[/\\]/);
   return parts[parts.length - 1] || path;
@@ -316,8 +245,7 @@ const SEND_SHORTCUT_OPTIONS = [
   { value: 'Enter', label: 'Enter', labelMac: 'Enter' },
   { value: 'Shift+Enter', label: 'Shift+Enter', labelMac: 'Shift+Enter' },
   { value: 'Ctrl+Enter', label: 'Ctrl+Enter', labelMac: 'Cmd+Enter' },
-  { value: 'Alt+Enter', label: 'Alt+Enter', labelMac: 'Option+Enter' },
-] as const;
+  { value: 'Alt+Enter', label: 'Alt+Enter', labelMac: 'Option+Enter' }]as const;
 
 const isMacPlatform = navigator.platform.includes('Mac');
 
@@ -504,11 +432,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const coworkAgentEngine = useSelector((state: RootState) => state.cowork.config.agentEngine);
     const availableModels = useSelector((state: RootState) => state.model.availableModels);
     const currentSession = useSelector((state: RootState) => state.cowork.currentSession);
-    const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
-    const authQuota = useSelector((state: RootState) => state.auth.quota);
-    const authOwnerAccountKey = useSelector((state: RootState) => state.auth.ownerAccountKey);
-    const authAccountGeneration = useSelector((state: RootState) => state.auth.accountGeneration);
-    const asrQuota = useSelector((state: RootState) => state.asrQuota);
     const [value, setValue] = useState(draftPrompt);
     const [steerValue, setSteerValue] = useState(steerDraft);
     const [steerInputActive, setSteerInputActive] = useState(false);
@@ -528,8 +451,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [goalEditDraft, setGoalEditDraft] = useState('');
     const [goalEditSaving, setGoalEditSaving] = useState(false);
     const [modelAccessPrompt, setModelAccessPrompt] = useState<ModelAccessPromptKind | null>(null);
-    const [showVoiceLoginPrompt, setShowVoiceLoginPrompt] = useState(false);
-    const [showVoiceQuotaPrompt, setShowVoiceQuotaPrompt] = useState(false);
     const [isLargeToolbarCompact, setIsLargeToolbarCompact] = useState(false);
     // While the input holds quick-action template text, pin the textarea to
     // maxHeight so switching templates doesn't bounce the layout around it.
@@ -666,191 +587,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const modelSupportsImage = !!effectiveSelectedModel?.supportsImage;
 
   const resolveSubmitModelAccessPrompt = useCallback((): ModelAccessPromptKind | null => {
-    const hasAccessibleUserModel = availableModels.some(
-      model => !model.isServerModel && model.accessible !== false
-    );
-    if (!isLoggedIn && !hasAccessibleUserModel) {
+    const hasAccessibleModel = availableModels.some(model => model.accessible !== false);
+    if (!hasAccessibleModel) {
       return ModelAccessPromptKind.Login;
-    }
-    if (isModelAgenticBlocked(effectiveSelectedModel)) {
-      return ModelAccessPromptKind.AgenticNotReady;
-    }
-    if (
-      effectiveSelectedModel?.providerKey === ProviderName.EgoaiServer
-      && effectiveSelectedModel.accessible === false
-    ) {
-      return isLoggedIn ? ModelAccessPromptKind.Subscribe : ModelAccessPromptKind.Login;
     }
     return null;
   }, [
-    availableModels,
-    effectiveSelectedModel,
-    isLoggedIn,
-  ]);
-
-  const {
-    handleVoiceInput,
-    stopVoiceRecordingAndRecognize,
-    isVoiceRecording,
-    isVoiceRecognizing,
-    recordingElapsedSeconds,
-  } = useCoworkVoiceInput({
-    draftKey,
-    value,
-    setValue,
-    textareaRef,
-    isLoggedIn,
-    disabled,
-    onQuotaExhausted: () => setShowVoiceQuotaPrompt(true),
-  });
-
-  const isAsrSubscribed = authQuota?.subscriptionStatus === AuthSubscriptionStatus.Active;
-  const isAsrQuotaExhaustedToday = asrQuota.status === AsrQuotaStatus.Exhausted
-    && asrQuota.dayKey === getLocalAsrQuotaDayKey();
-  const voiceInputLocksEditing = isVoiceRecording || isVoiceRecognizing;
-  const promptAnalyticsSurface = getPromptAnalyticsSurface(sessionId);
-  const promptAnalyticsConversationState = getPromptAnalyticsConversationState(sessionId);
-
-  const getPromptContextAnalyticsParams = useCallback(() => {
-    const matchedSession = currentSession?.id === sessionId ? currentSession : null;
-    return {
-      surface: promptAnalyticsSurface,
-      conversationState: promptAnalyticsConversationState,
-      agentId: currentAgentId,
-      isMainAgent: currentAgentId === 'main',
-      agentSource: currentAgent?.source,
-      agentSkillCount: currentAgent?.skillIds.length ?? 0,
-      hasWorkingDirectory: workingDirectory.trim().length > 0,
-      isPlanMode,
-      sessionMessageCount: matchedSession?.totalMessages,
-      sessionCreatedAt: matchedSession?.createdAt,
-    };
-  }, [
-    currentAgent?.skillIds.length,
-    currentAgent?.source,
-    currentAgentId,
-    currentSession,
-    isPlanMode,
-    promptAnalyticsConversationState,
-    promptAnalyticsSurface,
-    sessionId,
-    workingDirectory,
-  ]);
-
-  const getPromptCapabilityAnalyticsParams = useCallback(() => ({
-    ...getSkillAnalyticsParams(activeSkillIds, skills),
-    ...getKitAnalyticsParams(activeKitIds, marketplaceKits, installedKits),
-    ...getAttachmentAnalyticsParams(attachments),
-    ...getModelAnalyticsParams(effectiveSelectedModel),
-    selectedTextSnippetCount: selectedTextSnippets.length,
-  }), [
-    activeKitIds,
-    activeSkillIds,
-    attachments,
-    effectiveSelectedModel,
-    installedKits,
-    marketplaceKits,
-    selectedTextSnippets.length,
-    skills,
-  ]);
-
-  const reportPromptControl = useCallback((
-    controlType: string,
-    params?: Record<string, string | number | boolean | null | undefined>,
-  ) => {
-    console.debug(`[CoworkPromptInput] reporting prompt control analytics: ${controlType}`);
-    reportPromptControlAction({
-      controlType,
-      surface: promptAnalyticsSurface,
-      conversationState: promptAnalyticsConversationState,
-      params: {
-        agentId: currentAgentId,
-        isMainAgent: currentAgentId === 'main',
-        hasWorkingDirectory: workingDirectory.trim().length > 0,
-        isPlanMode,
-        ...params,
-      },
-    });
-  }, [
-    currentAgentId,
-    isPlanMode,
-    promptAnalyticsConversationState,
-    promptAnalyticsSurface,
-    workingDirectory,
-  ]);
-
-  const getPromptInputSource = useCallback((
-    submitMethod: 'button' | 'keyboard' | 'voice',
-    mediaReferenceCount = 0,
-  ): string => {
-    if (submitMethod === 'voice') return 'voice';
-    if (inputSourceOverrideRef.current) return inputSourceOverrideRef.current;
-    if (selectedTextSnippets.length > 0) return 'selected_text';
-    if (mediaReferenceCount > 0) return 'media_reference';
-    return sessionId ? 'history_continue' : 'typed';
-  }, [selectedTextSnippets.length, sessionId]);
-
-  const ensureFreshAsrQuota = useCallback(() => {
-    dispatch(ensureAsrQuotaFreshForDay(getLocalAsrQuotaDayKey()));
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      dispatch(resetAsrQuota());
-      return;
-    }
-    ensureFreshAsrQuota();
-  }, [dispatch, ensureFreshAsrQuota, isLoggedIn]);
-
-  const handleVoiceInputClick = useCallback(() => {
-    if (isVoiceRecording) {
-      reportPromptControl('voice_record_stop', {
-        recordingElapsedSeconds,
-      });
-      void handleVoiceInput();
-      return;
-    }
-    if (disabled) {
-      reportPromptControl('voice_record_blocked', {
-        blockedReason: 'disabled',
-      });
-      return;
-    }
-    if (!isLoggedIn) {
-      reportPromptControl('voice_record_blocked', {
-        blockedReason: 'login_required',
-      });
-      setShowVoiceLoginPrompt(true);
-      return;
-    }
-    const todayKey = getLocalAsrQuotaDayKey();
-    if (asrQuota.dayKey && asrQuota.dayKey !== todayKey) {
-      dispatch(ensureAsrQuotaFreshForDay(todayKey));
-    } else if (asrQuota.status === AsrQuotaStatus.Exhausted && asrQuota.dayKey === todayKey) {
-      reportPromptControl('voice_record_blocked', {
-        blockedReason: 'quota_exhausted',
-        asrQuotaStatus: asrQuota.status,
-      });
-      setShowVoiceQuotaPrompt(true);
-      return;
-    }
-    reportPromptControl('voice_record_start', {
-      asrQuotaStatus: asrQuota.status,
-      isAsrSubscribed,
-    });
-    void handleVoiceInput();
-  }, [
-    asrQuota.dayKey,
-    asrQuota.status,
-    disabled,
-    dispatch,
-    handleVoiceInput,
-    isAsrSubscribed,
-    isLoggedIn,
-    isVoiceRecording,
-    recordingElapsedSeconds,
-    reportPromptControl,
-  ]);
+    availableModels]);
 
   // Load skills on mount
   useEffect(() => {
@@ -1113,19 +856,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
     if (!draftStartedAnalyticsRef.current && newValue.trim().length > 0) {
       draftStartedAnalyticsRef.current = true;
-      reportPromptControl('draft_started', {
-        promptLength: newValue.trim().length,
-        ...getPromptTextAnalyticsParams(newValue),
-      });
+      
     }
-  }, [reportPromptControl, steerInputActive]);
-
-  const handleTextareaFocus = useCallback(() => {
-    reportPromptControl('input_focus', {
-      hasPrompt: activeTextareaValue.trim().length > 0,
-      attachmentCount: attachments.length,
-    });
-  }, [activeTextareaValue, attachments.length, reportPromptControl]);
+  }, [steerInputActive]);
 
   const resetGoalInput = useCallback((restoreDraft: boolean) => {
     const restoredDraft = restoreDraft ? goalInputReturnDraftRef.current : null;
@@ -1150,16 +883,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       basePrompt,
       attachments: sourceAttachments,
       selectedTextSnippets: sourceSelectedTextSnippets,
-      submitMethod,
     } = options;
-
-    console.debug('[CoworkPromptInput] preparePromptPayload: attachment diagnosis', {
-      totalAttachments: sourceAttachments.length,
-      modelSupportsImage,
-      effectiveModelId: effectiveSelectedModel?.id ?? null,
-      ...getAttachmentAnalyticsParams(sourceAttachments),
-      imageAttachmentDataUrlCount: sourceAttachments.filter(item => item.isImage && item.dataUrl).length,
-    });
 
     const result = await prepareCoworkPromptPayload({
       basePrompt,
@@ -1172,9 +896,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     });
     if (!result.success) {
       const { failure } = result;
-      const blockedReason = failure.code === CoworkPromptPayloadFailureCode.ImageTooLarge
-        ? 'image_attachment_too_large'
-        : 'image_preview_failed';
       if (failure.code === CoworkPromptPayloadFailureCode.ImageTooLarge) {
         showToast(
           i18nService.t('coworkImageAttachmentTooLarge')
@@ -1187,13 +908,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             .replace('{name}', failure.attachmentName),
         );
       }
-      reportPromptControl('submit_blocked', {
-        blockedReason,
-        submitMethod,
-        ...getPromptTextAnalyticsParams(basePrompt),
-        attachmentCount: sourceAttachments.length,
-        imageAttachmentCount: sourceAttachments.filter(item => item.isImage).length,
-      });
+      
       return null;
     }
 
@@ -1218,24 +933,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
 
     return payload;
-  }, [
-    effectiveSelectedModel?.id,
-    modelSupportsImage,
-    reportPromptControl,
-  ]);
+  }, [modelSupportsImage]);
 
   const handleSubmit = useCallback(async (submitMethod: 'button' | 'keyboard' | 'voice' = 'button') => {
     let effectiveSubmitMethod = submitMethod;
     if (submitDisabled) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'quota_exhausted',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(value),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       return;
     }
-    const btwCommand = !goalInputActive && !steerInputActive && !isVoiceRecording
+    const btwCommand = !goalInputActive && !steerInputActive
       ? parseCoworkBtwCommand(value)
       : { matched: false } as const;
     if (btwCommand.matched) {
@@ -1252,11 +958,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         return;
       }
       if (disabled || isPatchingModel) {
-        reportPromptControl('submit_blocked', {
-          blockedReason: disabled ? 'disabled' : 'model_patching',
-          submitMethod: effectiveSubmitMethod,
-          ...getPromptTextAnalyticsParams(btwCommand.question),
-        });
+        
         return;
       }
 
@@ -1276,19 +978,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
         inputSourceOverrideRef.current = null;
       }
-      reportPromptSubmit({
-        ...getPromptContextAnalyticsParams(),
-        submitMethod: effectiveSubmitMethod,
-        promptLength: btwCommand.question.length,
-        promptLineCount: 1,
-        hasPrompt: true,
-        params: {
-          inputSource: 'btw',
-          mediaReferenceCount: 0,
-          selectedTextSnippetCount: 0,
-          effectiveCollaborationMode: CoworkCollaborationMode.Default,
-        },
-      });
+      
       return;
     }
 
@@ -1305,11 +995,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       }
       const steerText = (steerInputActive ? steerValue : value).trim();
       if (!steerText || disabled || isPatchingModel) {
-        reportPromptControl('submit_blocked', {
-          blockedReason: !steerText ? 'empty_steer' : disabled ? 'disabled' : 'model_patching',
-          submitMethod: effectiveSubmitMethod,
-          ...getPromptTextAnalyticsParams(steerText),
-        });
+        
         return;
       }
 
@@ -1335,19 +1021,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         setValue('');
         dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
       }
-      reportPromptSubmit({
-        ...getPromptContextAnalyticsParams(),
-        submitMethod: effectiveSubmitMethod,
-        promptLength: steerText.length,
-        promptLineCount: steerText.length > 0 ? steerText.split('\n').length : 0,
-        hasPrompt: true,
-        params: {
-          inputSource: 'steer',
-          mediaReferenceCount: 0,
-          selectedTextSnippetCount: 0,
-          effectiveCollaborationMode: CoworkCollaborationMode.Default,
-        },
-      });
+      
       return;
     }
 
@@ -1359,15 +1033,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     if (shouldQueueFollowUp) {
       const followUpText = value.trim();
       if ((!followUpText && attachments.length === 0 && browserAnnotationBatches.length === 0) || disabled || isPatchingModel) {
-        reportPromptControl('submit_blocked', {
-          blockedReason: !followUpText && attachments.length === 0 && browserAnnotationBatches.length === 0
-            ? 'empty_follow_up'
-            : disabled
-              ? 'disabled'
-              : 'model_patching',
-          submitMethod: effectiveSubmitMethod,
-          ...getPromptTextAnalyticsParams(followUpText),
-        });
+        
         return;
       }
       if (pendingSteers.length >= COWORK_STEER_QUEUE_LIMIT) {
@@ -1376,12 +1042,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           `queued follow-up rejected because queue is full for session ${sessionId}; `
           + `limit=${COWORK_STEER_QUEUE_LIMIT}.`,
         );
-        reportPromptControl('submit_blocked', {
-          blockedReason: 'follow_up_queue_full',
-          submitMethod: effectiveSubmitMethod,
-          queuedFollowUpCount: pendingSteers.length,
-          ...getPromptTextAnalyticsParams(followUpText),
-        });
+        
         showToast(i18nService.t('coworkSteerQueueFull'));
         return;
       }
@@ -1418,8 +1079,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       const queuedKitPrompt = buildSelectedKitContextPrompt(activeKitIds, marketplaceKits, installedKits);
       const queuedSkillPrompt = [
         queuedKitPrompt,
-        buildSelectedSkillRoutingPrompt(queuedSkills),
-      ].filter(Boolean).join('\n\n') || undefined;
+        buildSelectedSkillRoutingPrompt(queuedSkills)].filter(Boolean).join('\n\n') || undefined;
 
       const queuedSteerId = `steer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const now = Date.now();
@@ -1433,8 +1093,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       dispatch(addPendingSteer({
         id: queuedSteerId,
         sessionId,
-        ownerAccountKey: authOwnerAccountKey,
-        accountGeneration: authAccountGeneration,
         text: followUpText,
         attachments: queuedAttachments.length > 0 ? queuedAttachments : undefined,
         selectedTextSnippets: queuedPayload.selectedTextSnippets,
@@ -1467,28 +1125,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       setImageVisionHint(false);
       draftStartedAnalyticsRef.current = false;
       inputSourceOverrideRef.current = null;
-      reportPromptSubmit({
-        ...getPromptContextAnalyticsParams(),
-        submitMethod: effectiveSubmitMethod,
-        promptLength: followUpText.length,
-        promptLineCount: followUpText.length > 0 ? followUpText.split('\n').length : 0,
-        hasPrompt: queuedPayload.finalPrompt.length > 0,
-        params: {
-          inputSource: 'queued_follow_up',
-          selectedTextSnippetCount: selectedTextSnippets.length,
-          effectiveCollaborationMode: CoworkCollaborationMode.Default,
-        },
-      });
+      
       return;
     }
 
     if (showFolderSelector && !workingDirectory?.trim()) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'working_directory_required',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(value),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       setShowFolderRequiredWarning(true);
       if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
       warningTimerRef.current = setTimeout(() => {
@@ -1499,27 +1141,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
 
     let submitValue = value;
-    if (isVoiceRecording) {
-      effectiveSubmitMethod = 'voice';
-      const recognizedValue = await stopVoiceRecordingAndRecognize();
-      if (recognizedValue === null) {
-        reportPromptControl('submit_blocked', {
-          blockedReason: 'voice_recognition_failed',
-          submitMethod: effectiveSubmitMethod,
-          ...getPromptCapabilityAnalyticsParams(),
-        });
-        return;
-      }
-      submitValue = recognizedValue;
-    }
-
     const trimmedValue = submitValue.trim();
     if (goalInputActive && !trimmedValue) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'empty_goal',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       return;
     }
     if (
@@ -1535,26 +1159,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const goalCommandCanRunWhileStreaming = goalInputActive && !!sessionId && !!onGoalCommand;
     const followUpCanQueueWhileStreaming = !!sessionId && !remoteManaged;
     if (isStreaming && !goalCommandCanRunWhileStreaming && !followUpCanQueueWhileStreaming) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'streaming',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(trimmedValue),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       showToast(i18nService.t('coworkSessionStillRunning'));
       return;
     }
     if ((!trimmedValue && attachments.length === 0 && browserAnnotationBatches.length === 0) || disabled || isPatchingModel) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: !trimmedValue && attachments.length === 0 && browserAnnotationBatches.length === 0
-          ? 'empty'
-          : disabled
-            ? 'disabled'
-            : 'model_patching',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(trimmedValue),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       return;
     }
     setShowFolderRequiredWarning(false);
@@ -1571,13 +1181,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
     const accessPrompt = resolveSubmitModelAccessPrompt();
     if (accessPrompt) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'model_access_required',
-        accessPrompt,
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(trimmedValue),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       setModelAccessPrompt(accessPrompt);
       return;
     }
@@ -1590,33 +1194,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         return false;
       });
       if (!accepted) {
-        reportPromptControl('submit_blocked', {
-          blockedReason: 'goal_command_rejected',
-          submitMethod: effectiveSubmitMethod,
-          ...getPromptTextAnalyticsParams(trimmedValue),
-          ...getPromptCapabilityAnalyticsParams(),
-        });
+        
         return;
       }
       resetGoalInput(false);
       setValue('');
       dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
       setShowAddMenu(false);
-      reportPromptSubmit({
-        ...getPromptContextAnalyticsParams(),
-        submitMethod: effectiveSubmitMethod,
-        promptLength: trimmedValue.length,
-        promptLineCount: trimmedValue.length > 0 ? trimmedValue.split('\n').length : 0,
-        hasPrompt: trimmedValue.length > 0,
-        params: {
-          ...getPromptCapabilityAnalyticsParams(),
-          ...getPromptTextAnalyticsParams(trimmedValue),
-          inputSource: getPromptInputSource(effectiveSubmitMethod, 0),
-          mediaReferenceCount: 0,
-          selectedTextSnippetCount: selectedTextSnippets.length,
-          effectiveCollaborationMode,
-        },
-      });
+      
       return;
     }
 
@@ -1632,8 +1217,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       ? buildPlanModeSystemPrompt()
       : [
         kitPrompt,
-        buildSelectedSkillRoutingPrompt(activeSkills),
-      ].filter(Boolean).join('\n\n') || undefined;
+        buildSelectedSkillRoutingPrompt(activeSkills)].filter(Boolean).join('\n\n') || undefined;
     if (effectivePlanMode) {
       logPromptModelSelection(
         'debug',
@@ -1721,12 +1305,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       effectiveCollaborationMode,
     );
     if (result === false) {
-      reportPromptControl('submit_blocked', {
-        blockedReason: 'submit_rejected',
-        submitMethod: effectiveSubmitMethod,
-        ...getPromptTextAnalyticsParams(trimmedValue),
-        ...getPromptCapabilityAnalyticsParams(),
-      });
+      
       return;
     }
     if (goalInputActive && sessionId) {
@@ -1736,21 +1315,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         dispatch(updateSessionGoal({ sessionId, goal: optimisticGoal }));
       }
     }
-    const promptLineCount = trimmedValue.length > 0 ? trimmedValue.split('\n').length : 0;
-    reportPromptSubmit({
-      ...getPromptContextAnalyticsParams(),
-      submitMethod: effectiveSubmitMethod,
-      promptLength: trimmedValue.length,
-      promptLineCount,
-      hasPrompt: trimmedValue.length > 0,
-      params: {
-        ...getPromptCapabilityAnalyticsParams(),
-        ...getPromptTextAnalyticsParams(trimmedValue),
-        inputSource: getPromptInputSource(effectiveSubmitMethod, 0),
-        selectedTextSnippetCount: selectedTextSnippets.length,
-        effectiveCollaborationMode,
-      },
-    });
+
     if (awaitingPlanConfirmation) {
       dispatch(setPlanConfirmationHandled({
         sessionId: draftKey,
@@ -1775,87 +1340,40 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     resetGoalInput(false);
     draftStartedAnalyticsRef.current = false;
     inputSourceOverrideRef.current = null;
-  }, [value, steerInputActive, steerValue, isVoiceRecording, stopVoiceRecordingAndRecognize, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, reportPromptControl, getPromptCapabilityAnalyticsParams, getPromptContextAnalyticsParams, getPromptInputSource, goal, sessionId, preparePromptPayload, modelSupportsImage, authOwnerAccountKey, authAccountGeneration]);
+  }, [value, steerInputActive, steerValue, goalInputActive, goalInputMode, resetGoalInput, isStreaming, canSteer, remoteManaged, disabled, submitDisabled, isPatchingModel, onSubmit, onGoalCommand, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, browserAnnotationBatches, showFolderSelector, workingDirectory, dispatch, draftKey, selectedTextSnippets, pendingSteers.length, resolveSubmitModelAccessPrompt, isPlanMode, planConfirmation, goal, sessionId, preparePromptPayload, modelSupportsImage]);
   handleSubmitRef.current = handleSubmit;
 
   const handleSelectSkill = useCallback((skill: Skill) => {
-    const willSelect = !activeSkillIds.includes(skill.id);
-    reportPromptControl('skill_toggle', {
-      skillId: skill.id,
-      skillName: skill.name,
-      skillSource: skill.isBuiltIn ? 'built_in' : skill.isOfficial ? 'official' : 'custom',
-      targetEnabled: willSelect,
-      activeSkillCount: activeSkillIds.length + (willSelect ? 1 : -1),
-    });
     dispatch(toggleActiveSkill(skill.id));
-  }, [activeSkillIds, dispatch, reportPromptControl]);
+  }, [dispatch]);
 
   const handleManageSkills = useCallback(() => {
-    reportPromptControl('manage_skills_click', {
-      activeSkillCount: activeSkillIds.length,
-    });
     setShowAddMenu(false);
     setShowSkillsPopover(false);
     if (onManageSkills) {
       onManageSkills();
     }
-  }, [activeSkillIds.length, onManageSkills, reportPromptControl]);
+  }, [onManageSkills]);
 
   const handleSelectKit = useCallback((kitId: string) => {
-    const willSelect = !activeKitIds.includes(kitId);
-    const marketplaceKit = marketplaceKits.find(kit => kit.id === kitId);
-    const installedKit = installedKits[kitId];
-    reportPromptControl('kit_toggle', {
-      kitId,
-      kitName: marketplaceKit ? resolveLocalizedText(marketplaceKit.name) : installedKit?.id ?? kitId,
-      kitSource: marketplaceKit ? 'lobsterai-kits' : 'installed',
-      targetEnabled: willSelect,
-      isInstalled: !!installedKit,
-      skillCount: installedKit?.skills?.skillIds.length ?? marketplaceKit?.skills?.list.length,
-      mcpServerCount: installedKit?.mcpServers.length ?? marketplaceKit?.mcpServers?.length,
-      connectorCount: installedKit?.connectors.length ?? marketplaceKit?.connectors?.length,
-    });
     dispatch(toggleActiveKit(kitId));
-    if (willSelect) {
-      void reportYdAnalyzer({
-        action: LogReporterAction.ExpertKitSelected,
-        kitId,
-        kitName: marketplaceKit ? resolveLocalizedText(marketplaceKit.name) : undefined,
-        kitSource: marketplaceKit ? 'lobsterai-kits' : 'installed',
-        isInstalled: !!installedKit,
-        skillCount: installedKit?.skills?.skillIds.length ?? marketplaceKit?.skills?.list.length,
-        mcpServerCount: installedKit?.mcpServers.length ?? marketplaceKit?.mcpServers?.length,
-        connectorCount: installedKit?.connectors.length ?? marketplaceKit?.connectors?.length,
-      });
-    }
-  }, [activeKitIds, dispatch, installedKits, marketplaceKits, reportPromptControl]);
+  }, [dispatch]);
 
   const handleManageKits = useCallback(() => {
-    reportPromptControl('manage_kits_click', {
-      activeKitCount: activeKitIds.length,
-    });
     if (onManageKits) {
       onManageKits();
     }
-  }, [activeKitIds.length, onManageKits, reportPromptControl]);
+  }, [onManageKits]);
 
   const handleSelectAgent = useCallback((agentId: string) => {
     if (!agentId || agentId === currentAgentId) {
       setShowAgentMenu(false);
       return;
     }
-    const nextAgent = agents.find(agent => agent.id === agentId);
-    reportPromptControl('agent_selected', {
-      targetAgentId: agentId,
-      targetIsMainAgent: agentId === 'main',
-      targetAgentSource: nextAgent?.source,
-      targetAgentSkillCount: nextAgent?.skillIds.length ?? 0,
-      hasAgentModel: Boolean(nextAgent?.model),
-      agentModelId: nextAgent?.model,
-    });
+
     agentService.switchAgent(agentId);
     setShowAgentMenu(false);
-  }, [agents, currentAgentId, reportPromptControl]);
+  }, [currentAgentId]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isComposing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
@@ -1913,9 +1431,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   };
 
   const handleStopClick = () => {
-    reportPromptControl('stop_streaming', {
-      ...getPromptCapabilityAnalyticsParams(),
-    });
+    
     if (onStop) {
       void Promise.resolve(onStop()).catch((error) => {
         logCoworkSteer('error', 'failed to stop active turn from prompt stop button.', error);
@@ -1924,7 +1440,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   };
 
   const handleToggleSteerInput = useCallback(() => {
-    if (!sessionId || disabled || voiceInputLocksEditing) return;
+    if (!sessionId || disabled) return;
     const nextActive = !steerInputActive;
     if (nextActive) {
       if (goalInputActive) {
@@ -1955,9 +1471,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     sessionId,
     steerDraft,
     steerInputActive,
-    value,
-    voiceInputLocksEditing,
-  ]);
+    value]);
 
   const containerClass = isCompact
     ? 'relative rounded-2xl border border-border bg-surface shadow-subtle'
@@ -1986,10 +1500,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const hasWorkingDirectory = workingDirectory.trim().length > 0;
 
   const handleFolderSelect = (path: string) => {
-    reportPromptControl('working_directory_selected', {
-      source: showReadOnlyContext ? 'conversation_context' : 'home_context',
-      hasSelectedFolder: path.trim().length > 0,
-    });
+    
     if (onWorkingDirectoryChange) {
       onWorkingDirectoryChange(path);
     }
@@ -1998,9 +1509,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const handleOpenWorkingDirectory = useCallback(async () => {
     const path = workingDirectory.trim();
     if (!path) return;
-    reportPromptControl('working_directory_open', {
-      source: 'read_only_context',
-    });
+    
 
     try {
       const result = await window.electron.shell.openPath(path);
@@ -2010,7 +1519,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     } catch (error) {
       console.error('[CoworkPromptInput] failed to open folder:', error);
     }
-  }, [reportPromptControl, workingDirectory]);
+  }, [workingDirectory]);
 
   const addAttachment = useCallback((filePath: string, options?: { isImage?: boolean; isDirectory?: boolean; dataUrl?: string }) => {
     if (!filePath) return;
@@ -2137,23 +1646,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   }, [fileToBase64, workingDirectory]);
 
   const handleIncomingFiles = useCallback(async (fileList: FileList | File[], source: 'drop' | 'paste' | 'picker' | 'unknown' = 'unknown') => {
-    if (disabled || voiceInputLocksEditing) {
-      reportPromptControl('attachment_add_blocked', {
-        source,
-        blockedReason: disabled ? 'disabled' : 'voice_input_active',
-      });
+    if (disabled) {
+      
       return;
     }
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
     let hasImageWithoutVision = false;
-    const incomingAttachments = files.map(file => ({
-      path: file.name,
-      name: file.name,
-      isImage: isImageMimeType(file.type) || isImagePath(file.name),
-      size: file.size,
-    }));
+
     for (const file of files) {
       const nativePath = getNativeFilePath(file);
       const nativeStat = nativePath ? await statNativePath(nativePath) : null;
@@ -2254,25 +1755,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     if (hasImageWithoutVision) {
       setImageVisionHint(true);
     }
-    reportPromptControl('attachment_add_success', {
-      source,
-      modelSupportsImage,
-      hasImageWithoutVision,
-      ...getAttachmentAnalyticsParams(incomingAttachments),
-    });
-  }, [addAttachment, addImageAttachmentFromDataUrl, disabled, effectiveSelectedModel, fileToDataUrl, getNativeFilePath, modelSupportsImage, reportPromptControl, saveInlineFile, statNativePath, voiceInputLocksEditing]);
+    
+  }, [addAttachment, addImageAttachmentFromDataUrl, disabled, effectiveSelectedModel, fileToDataUrl, getNativeFilePath, modelSupportsImage,saveInlineFile, statNativePath]);
 
   const handleAddFile = useCallback(async () => {
-    if (isAddingFile || disabled || voiceInputLocksEditing) {
-      reportPromptControl('attachment_add_blocked', {
-        source: 'picker',
-        blockedReason: isAddingFile ? 'adding_file' : disabled ? 'disabled' : 'voice_input_active',
-      });
+    if (isAddingFile || disabled) {
+      
       return;
     }
-    reportPromptControl('attach_file_click', {
-      source: 'picker',
-    });
+    
     setShowAddMenu(false);
     setIsAddingFile(true);
     try {
@@ -2280,9 +1771,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         title: i18nService.t('coworkAddFile'),
       });
       if (!result.success || result.paths.length === 0) {
-        reportPromptControl('attachment_add_cancelled', {
-          source: 'picker',
-        });
+        
         return;
       }
       let hasImageWithoutVision = false;
@@ -2315,50 +1804,28 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         setImageVisionHint(true);
 
       }
-      reportPromptControl('attachment_add_success', {
-        source: 'picker',
-        selectedFileCount: result.paths.length,
-        modelSupportsImage,
-        hasImageWithoutVision,
-        ...getAttachmentAnalyticsParams(result.paths.map(filePath => ({
-          path: filePath,
-          name: getFileNameFromPath(filePath),
-          isImage: isImagePath(filePath),
-        }))),
-      });
+      
     } catch (error) {
       console.error('Failed to select file:', error);
-      reportPromptControl('attachment_add_failed', {
-        source: 'picker',
-        errorCode: 'select_files_failed',
-      });
+      
     } finally {
       setIsAddingFile(false);
     }
-  }, [addAttachment, effectiveSelectedModel, isAddingFile, disabled, modelSupportsImage, reportPromptControl, voiceInputLocksEditing]);
+  }, [addAttachment, effectiveSelectedModel, isAddingFile, disabled, modelSupportsImage]);
 
   const handleOpenAddMenu = useCallback(() => {
-    reportPromptControl(showAddMenu ? 'add_menu_close' : 'add_menu_open', {
-      activeSkillCount: activeSkillIds.length,
-      activeKitCount: activeKitIds.length,
-    });
     setShowSkillsPopover(false);
     setShowAddMenu(prev => !prev);
-  }, [activeKitIds.length, activeSkillIds.length, reportPromptControl, showAddMenu]);
+  }, []);
 
   const handleOpenSkillsPopover = useCallback(() => {
     if (skillSubmenuCloseTimerRef.current) {
       clearTimeout(skillSubmenuCloseTimerRef.current);
       skillSubmenuCloseTimerRef.current = null;
     }
-    if (!showSkillsPopover) {
-      reportPromptControl('skill_menu_open', {
-        activeSkillCount: activeSkillIds.length,
-      });
-    }
     setShowAddMenu(true);
     setShowSkillsPopover(true);
-  }, [activeSkillIds.length, reportPromptControl, showSkillsPopover]);
+  }, []);
 
   const cancelCloseSkillsPopover = useCallback(() => {
     if (skillSubmenuCloseTimerRef.current) {
@@ -2396,9 +1863,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     handleCloseSkillsPopover();
     setShowAddMenu(false);
     logPromptModelSelection('debug', `plan mode ${nextMode === CoworkCollaborationMode.Plan ? 'enabled' : 'disabled'} for draft ${draftKey}`);
-    reportPromptControl(nextMode === CoworkCollaborationMode.Plan ? 'plan_mode_enabled' : 'plan_mode_disabled', {
-      entry: LogReporterEntry.PromptToolsMenu,
-    });
+    
     if (nextMode === CoworkCollaborationMode.Plan && goalInputActive) {
       logPromptModelSelection('debug', `goal input mode disabled because plan mode was enabled for draft ${draftKey}`);
       resetGoalInput(true);
@@ -2413,16 +1878,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         messageId: planConfirmation.messageId,
       }));
     }
-    if (nextMode === CoworkCollaborationMode.Plan) {
-      void reportYdAnalyzer({
-        action: LogReporterAction.PlanModeEnabled,
-        entry: LogReporterEntry.PromptToolsMenu,
-      });
-    }
-  }, [dispatch, draftKey, goalInputActive, handleCloseSkillsPopover, isPlanMode, planConfirmation?.messageId, planConfirmation?.state, reportPromptControl, resetGoalInput]);
+  }, [dispatch, draftKey, goalInputActive, handleCloseSkillsPopover, isPlanMode, planConfirmation?.messageId, planConfirmation?.state,resetGoalInput]);
 
   const handleEnableGoalInput = useCallback((mode: GoalInputMode = 'start', initialValue?: string) => {
-    if (disabled || voiceInputLocksEditing || !onGoalCommand) return;
+    if (disabled || !onGoalCommand) return;
     handleCloseSkillsPopover();
     setShowAddMenu(false);
     goalInputReturnDraftRef.current = value;
@@ -2441,9 +1900,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           messageId: planConfirmation.messageId,
         }));
       }
-      reportPromptControl('plan_mode_disabled', {
-        entry: 'goal_mode',
-      });
+      
     }
     setGoalInputMode(mode);
     setGoalInputActive(true);
@@ -2451,29 +1908,20 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       setValue(initialValue);
       dispatch(setDraftPrompt({ sessionId: draftKey, draft: initialValue }));
     }
-    reportPromptControl('goal_mode_open', {
-      entry: LogReporterEntry.PromptToolsMenu,
-      hasGoal: !!goal,
-      mode,
-    });
+    
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [
     disabled,
     dispatch,
     draftKey,
-    goal,
     handleCloseSkillsPopover,
     isPlanMode,
     onGoalCommand,
     planConfirmation?.messageId,
-    planConfirmation?.state,
-    reportPromptControl,
-    value,
-    voiceInputLocksEditing,
-  ]);
+    planConfirmation?.state,value]);
 
   const handleOpenGoalEditModal = useCallback((initialValue: string) => {
-    if (disabled || voiceInputLocksEditing || !onGoalCommand) return;
+    if (disabled || !onGoalCommand) return;
     handleCloseSkillsPopover();
     setShowAddMenu(false);
     setGoalEditDraft(initialValue);
@@ -2483,7 +1931,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       goalEditTextareaRef.current?.focus();
       goalEditTextareaRef.current?.select();
     });
-  }, [disabled, handleCloseSkillsPopover, onGoalCommand, voiceInputLocksEditing]);
+  }, [disabled, handleCloseSkillsPopover, onGoalCommand]);
 
   const handleCloseGoalEditModal = useCallback(() => {
     if (goalEditSaving) return;
@@ -2519,13 +1967,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   }, [goal, goalEditDraft, goalEditSaving, handleCloseGoalEditModal, onGoalCommand, sessionId]);
 
   const handleGoalCommandClick = useCallback((command: string) => {
-    if (disabled || voiceInputLocksEditing || !onGoalCommand) return;
+    if (disabled || !onGoalCommand) return;
     const goalAction = command.split(/\s+/, 2)[1] ?? 'unknown';
     console.debug(`[CoworkGoal] prompt goal status action=${goalAction}`);
-    reportPromptControl('goal_status_action', {
-      action: goalAction,
-      hasGoal: !!goal,
-    });
+    
     void Promise.resolve(onGoalCommand(command)).then((result) => {
       if (result === false) return;
       if (!sessionId) return;
@@ -2537,15 +1982,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }).catch((error) => {
       console.warn(`[CoworkGoal] prompt goal status action=${goalAction} failed.`, error);
     });
-  }, [disabled, dispatch, goal, onGoalCommand, reportPromptControl, sessionId, voiceInputLocksEditing]);
+  }, [disabled, dispatch, goal, onGoalCommand,sessionId]);
 
   const handleDisablePlanMode = useCallback((event?: React.MouseEvent) => {
     event?.stopPropagation();
     if (!isPlanMode) return;
     logPromptModelSelection('debug', `plan mode disabled from active badge for draft ${draftKey}`);
-    reportPromptControl('plan_mode_disabled', {
-      entry: 'active_context_badge',
-    });
+    
     dispatch(setDraftCollaborationMode({
       draftKey,
       mode: CoworkCollaborationMode.Default,
@@ -2556,18 +1999,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         messageId: planConfirmation.messageId,
       }));
     }
-  }, [dispatch, draftKey, isPlanMode, planConfirmation?.messageId, planConfirmation?.state, reportPromptControl]);
+  }, [dispatch, draftKey, isPlanMode, planConfirmation?.messageId, planConfirmation?.state]);
 
   const handleRemoveAttachment = useCallback((path: string) => {
-    const attachment = attachments.find(item => item.path === path);
-    reportPromptControl('attachment_remove', {
-      ...getAttachmentAnalyticsParams(attachment ? [attachment] : []),
-    });
+
     dispatch(setDraftAttachments({
       draftKey,
       attachments: attachments.filter((attachment) => attachment.path !== path),
     }));
-  }, [attachments, dispatch, draftKey, reportPromptControl]);
+  }, [attachments, dispatch, draftKey]);
 
   const hasFileTransfer = (dataTransfer: DataTransfer | null): boolean => {
     if (!dataTransfer) return false;
@@ -2580,7 +2020,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     event.preventDefault();
     event.stopPropagation();
     dragDepthRef.current += 1;
-    if (!disabled && !voiceInputLocksEditing) {
+    if (!disabled) {
       setIsDraggingFiles(true);
     }
   };
@@ -2589,7 +2029,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     if (!hasFileTransfer(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = disabled || voiceInputLocksEditing ? 'none' : 'copy';
+    event.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
@@ -2608,21 +2048,20 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     event.stopPropagation();
     dragDepthRef.current = 0;
     setIsDraggingFiles(false);
-    if (disabled || voiceInputLocksEditing) return;
+    if (disabled) return;
     void handleIncomingFiles(event.dataTransfer.files, 'drop');
   };
 
   const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (disabled || voiceInputLocksEditing) return;
+    if (disabled) return;
     const files = getClipboardAttachmentFiles(event.clipboardData);
     if (files.length === 0) return;
     event.preventDefault();
     void handleIncomingFiles(files, 'paste');
-  }, [disabled, handleIncomingFiles, voiceInputLocksEditing]);
+  }, [disabled, handleIncomingFiles]);
 
   const canSubmit = !disabled
     && !submitDisabled
-    && !isVoiceRecognizing
     && !isPatchingModel
     && !agentModelIsInvalid
     && (!!activeTextareaValue.trim() || (!steerInputActive && (hasAttachments || browserAnnotationBatches.length > 0)));
@@ -2691,13 +2130,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         onChange={async (nextModel, meta: ModelSelectorChangeMeta) => {
           if (isPatchingModel || isPersistingAgentModel) return;
           if (!nextModel) return;
-          const selectedModel = meta.group === ModelSelectorGroup.Server
-            ? availableModels.find(model => (
-              model.isServerModel
-              && model.id === nextModel.id
-              && model.accessible !== false
-            )) ?? nextModel
-            : nextModel;
+          const selectedModel = nextModel;
           const modelRef = toOpenClawModelRef(selectedModel);
           const nextThinkingLevel = resolveModelThinkingLevel(
             selectedModel,
@@ -2716,7 +2149,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             setIsPatchingModel(true);
             logPromptModelSelection(
               'debug',
-              `switching session ${sessionId} to ${modelRef}; thinking level is ${nextThinkingLevel || 'default'}; selector group is ${meta.group}; server model is ${selectedModel.isServerModel === true}`,
+              `switching session ${sessionId} to ${modelRef}; thinking level is ${nextThinkingLevel || 'default'}`,
             );
             dispatch(updateCurrentSessionModelOverride({
               sessionId,
@@ -2745,7 +2178,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
               }
 
               logPromptModelSelection('debug', `switched session ${sessionId} to ${patchedSession.modelOverride || modelRef}`);
-              reportModelSelected(selectedModel, meta.group, 'session', currentAgentId, sessionId);
+              
               if (currentAgent && agentModelIsInvalid) {
                 void agentService.updateAgent(currentAgent.id, {
                   model: modelRef,
@@ -2775,12 +2208,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           }
           logPromptModelSelection(
             'debug',
-            `persisting agent ${currentAgentId} model ${modelRef}; selector group is ${meta.group}; server model is ${selectedModel.isServerModel === true}`,
+            `persisting agent ${currentAgentId} model ${modelRef}`,
           );
-          const persisted = await persistAgentModelSelection(selectedModel, nextThinkingLevel);
-          if (persisted) {
-            reportModelSelected(selectedModel, meta.group, 'agent', currentAgentId);
-          }
+          await persistAgentModelSelection(selectedModel, nextThinkingLevel);
         }}
       />
       {agentModelIsInvalid && (
@@ -2819,7 +2249,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             onClick={handleAddFile}
             onMouseEnter={handleCloseSkillsPopover}
             onFocus={handleCloseSkillsPopover}
-            disabled={disabled || isAddingFile || voiceInputLocksEditing}
+            disabled={disabled || isAddingFile}
             className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
             role="menuitem"
           >
@@ -2854,7 +2284,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             }}
             onMouseEnter={handleCloseSkillsPopover}
             onFocus={handleCloseSkillsPopover}
-            disabled={disabled || voiceInputLocksEditing || !onGoalCommand}
+            disabled={disabled || !onGoalCommand}
             className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               goalInputActive ? 'bg-surface-raised text-foreground' : 'text-foreground hover:bg-surface-raised'
             }`}
@@ -2873,7 +2303,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             onClick={handleTogglePlanMode}
             onMouseEnter={handleCloseSkillsPopover}
             onFocus={handleCloseSkillsPopover}
-            disabled={disabled || isStreaming || voiceInputLocksEditing}
+            disabled={disabled || isStreaming}
             className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
             role="menuitemcheckbox"
             aria-checked={isPlanMode}
@@ -2904,33 +2334,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       <KitsButton
         onSelectKit={handleSelectKit}
         onManageKits={handleManageKits}
-        onOpenChange={(open) => {
-          reportPromptControl(open ? 'kit_menu_open' : 'kit_menu_close', {
-            activeKitCount: activeKitIds.length,
-          });
-        }}
       />
     </div>
   ) : null;
-
-  const renderVoiceInputButton = (buttonClassName: string, iconClassName: string) => (
-    <VoiceInputButton
-      buttonClassName={buttonClassName}
-      iconClassName={iconClassName}
-      isLoggedIn={isLoggedIn}
-      disabled={disabled}
-      isQuotaExhausted={isAsrQuotaExhaustedToday}
-      isRecording={isVoiceRecording}
-      isRecognizing={isVoiceRecognizing}
-      onClick={handleVoiceInputClick}
-    />
-  );
-  const hasPromptText = Boolean(value.trim());
-  const voiceRecordingUiState = getCoworkVoiceRecordingUiState({
-    isLarge,
-    isStreaming,
-    isVoiceRecording,
-  });
 
   const largeInputToolActions = (
     <div className={`flex items-center ${useLargeToolbarCompactLayout ? 'gap-0' : 'gap-0.5'}`}>
@@ -2939,10 +2345,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   );
   const largeSendButtonSizeClass = useCompactSendButton ? 'h-7 w-7' : 'h-8 w-8';
   const largeSendIconSizeClass = useCompactSendButton ? 'h-4 w-4' : 'h-[18px] w-[18px]';
-  const largeVoiceInputButton = !remoteManaged ? renderVoiceInputButton(
-    `flex ${largeSendButtonSizeClass} shrink-0 items-center justify-center rounded-full`,
-    largeSendIconSizeClass,
-  ) : null;
 
   const largeTaskStopButton = (
     <button
@@ -2975,7 +2377,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     </button>
   );
 
-  const largeSendButton = voiceRecordingUiState.showTaskStopButton
+  const largeSendButton = isStreaming
     ? largeTaskStopButton
     : largeSubmitButton;
 
@@ -3142,8 +2544,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
   const steerPreviewItems = [
     ...pendingSteers.map(steer => ({ steer, source: 'pending' as const })),
-    ...rejectedSteers.map(steer => ({ steer, source: 'rejected' as const })),
-  ];
+    ...rejectedSteers.map(steer => ({ steer, source: 'rejected' as const }))];
   const externalSteerPreviewClass = `${isCompact ? 'mx-3' : 'mx-5'} max-h-[156px] overflow-y-auto rounded-t-2xl rounded-b-none border border-b-0 border-border bg-surface-raised/60`;
   const steerPreviewNode = steerPreviewItems.length > 0 ? (
     <div className={shouldUseExternalSteerPreview ? externalSteerPreviewClass : `${isCompact ? 'px-3 pt-2' : 'px-4 pt-3'}`}>
@@ -3161,7 +2562,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       : shouldUseExternalSteerPreview ? null : steerPreviewNode
     : null;
 
-  const goalActionsDisabled = disabled || voiceInputLocksEditing || !onGoalCommand;
+  const goalActionsDisabled = disabled || !onGoalCommand;
   const shouldUseExternalGoalStatusBar = goalStatusBarPortalTarget !== undefined;
   const sessionGoalStatusBarNode = goal && !goalInputActive ? (() => {
     const summary = getGoalSummary(goal);
@@ -3305,7 +2706,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     <div
       className={`flex cursor-text flex-wrap items-center gap-x-2 gap-y-1 px-4 ${isCompact ? 'pt-2' : 'pt-4'}`}
       onClick={() => {
-        if (!disabled && !voiceInputLocksEditing) textareaRef.current?.focus();
+        if (!disabled) textareaRef.current?.focus();
       }}
     >
       <ActiveSkillBadge />
@@ -3337,11 +2738,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           ref={textareaRef}
           value={activeTextareaValue}
         onChange={handleTextareaChange}
-        onFocus={handleTextareaFocus}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        placeholder={voiceRecordingUiState.shouldHideInputPlaceholder ? '' : textareaPlaceholderText}
-        disabled={disabled || voiceInputLocksEditing}
+        placeholder={textareaPlaceholderText}
+        disabled={disabled}
         rows={rows}
         className={`${textareaClass} relative z-10`}
         style={{
@@ -3399,20 +2799,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     </div>
   ) : null;
 
-  const voiceQuotaLimitSeconds = asrQuota.limitSecondsToday
-    ?? (isAsrSubscribed ? DEFAULT_SUBSCRIBED_ASR_LIMIT_SECONDS : DEFAULT_FREE_ASR_LIMIT_SECONDS);
-  const voiceQuotaLimitText = formatVoiceInputQuotaLimit(voiceQuotaLimitSeconds);
-  const voiceQuotaDescription = i18nService
-    .t(isAsrSubscribed ? 'voiceInputQuotaExhaustedSubscribedDesc' : 'voiceInputQuotaExhaustedFreeDesc')
-    .replace('{limit}', voiceQuotaLimitText);
-  const handleVoiceQuotaPrimary = async () => {
-    if (isAsrSubscribed) {
-      setShowVoiceQuotaPrompt(false);
-      return;
-    }
-    setShowVoiceQuotaPrompt(false);
-    await window.electron.shell.openExternal(getPortalPricingUrl());
-  };
   const normalizedGoalEditDraft = goalEditDraft.trim();
   const canSaveGoalEdit = Boolean(
     goal
@@ -3540,21 +2926,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                   style: { minHeight: `${minHeight}px` },
                 })}
                 <div ref={largeToolbarRef} className={`relative flex items-center justify-between ${largeToolbarGapClass} px-4 pb-2 pt-1`}>
-                  {voiceRecordingUiState.showFooterRecordingStatus && (
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 z-20 flex -translate-y-1/2 justify-center">
-                      <VoiceInputRecordingStatus
-                        elapsedSeconds={recordingElapsedSeconds}
-                        showHint={!hasPromptText}
-                      />
-                    </div>
-                  )}
                   <div className={`flex min-w-0 items-center ${largeToolbarControlGapClass}`}>
-                    {voiceRecordingUiState.showLargeInputControls && largeInputToolActions}
+                    {largeInputToolActions}
                   </div>
                   <div className={`flex shrink-0 items-center ${largeToolbarControlGapClass}`}>
                     {contextUsageControl}
-                    {voiceRecordingUiState.showLargeModelSelector && largeModelSelector}
-                    {largeVoiceInputButton}
+                    {largeModelSelector}
                     {largeSendButton}
                   </div>
                 </div>
@@ -3566,9 +2943,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                       ref={folderButtonRef as React.RefObject<HTMLButtonElement>}
                       type="button"
                       onClick={() => {
-                        reportPromptControl(showFolderMenu ? 'working_directory_selector_close' : 'working_directory_selector_open', {
-                          source: 'home_context',
-                        });
+                        
                         setShowFolderMenu(!showFolderMenu);
                       }}
                       className={`flex h-7 max-w-[260px] items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors ${
@@ -3604,9 +2979,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                     ref={agentButtonRef}
                     type="button"
                     onClick={() => {
-                      reportPromptControl(showAgentMenu ? 'agent_selector_close' : 'agent_selector_open', {
-                        agentCount: agentOptions.length,
-                      });
+                      
                       setShowAgentMenu(!showAgentMenu);
                     }}
                     className={`flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg px-2 text-[13px] text-secondary transition-colors hover:bg-background/80 hover:text-foreground ${
@@ -3660,16 +3033,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                 style: { minHeight: `${minHeight}px` },
               })}
               <div ref={largeToolbarRef} className={`relative flex items-center justify-between ${largeToolbarGapClass} px-4 ${isCompact ? 'pb-1.5 pt-0.5' : 'pb-2 pt-1.5'}`}>
-                {voiceRecordingUiState.showFooterRecordingStatus && (
-                  <div className="pointer-events-none absolute inset-x-0 top-1/2 z-20 flex -translate-y-1/2 justify-center">
-                    <VoiceInputRecordingStatus
-                      elapsedSeconds={recordingElapsedSeconds}
-                      showHint={!hasPromptText}
-                    />
-                  </div>
-                )}
                 <div className={`relative flex min-w-0 items-center ${largeToolbarControlGapClass}`}>
-                  {voiceRecordingUiState.showLargeInputControls && showFolderSelector && (
+                  {showFolderSelector && (
                     <>
                       <div className="flex items-center">
                         <button
@@ -3714,12 +3079,11 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                       )}
                     </>
                   )}
-                  {voiceRecordingUiState.showLargeInputControls && largeInputToolActions}
+                  {largeInputToolActions}
                 </div>
                 <div className={`flex shrink-0 items-center ${largeToolbarControlGapClass}`}>
                   {contextUsageControl}
-                  {voiceRecordingUiState.showLargeModelSelector && largeModelSelector}
-                  {largeVoiceInputButton}
+                  {largeModelSelector}
                   {largeSendButton}
                 </div>
               </div>
@@ -3740,14 +3104,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                   className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-surface-raised hover:text-foreground transition-colors"
                   title={i18nService.t('coworkAddFile')}
                   aria-label={i18nService.t('coworkAddFile')}
-                  disabled={disabled || isAddingFile || voiceInputLocksEditing}
+                  disabled={disabled || isAddingFile}
                 >
                   <PaperClipIcon className="h-5 w-5" />
                 </button>
-                {renderVoiceInputButton(
-                  'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full',
-                  'h-5 w-5',
-                )}
               </div>
             )}
 
@@ -3788,52 +3148,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       </div>
       {readOnlyContextRow}
       {modelAccessPrompt && (
-        <ModelAccessPromptModal
-          promptKind={modelAccessPrompt}
-          onClose={() => setModelAccessPrompt(null)}
-        />
-      )}
-      {showVoiceLoginPrompt && (
-        <ModelAccessPromptModal
-          promptKind={ModelAccessPromptKind.Login}
-          titleKey="voiceInputLoginTitle"
-          descriptionKey="voiceInputLoginDesc"
-          showLearnMore={false}
-          onClose={() => setShowVoiceLoginPrompt(false)}
-        />
-      )}
-      {showVoiceQuotaPrompt && (
-        <Modal
-          onClose={() => setShowVoiceQuotaPrompt(false)}
-          overlayClassName="fixed inset-0 z-[10050] flex items-center justify-center modal-backdrop px-4"
-          className="modal-content w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-modal"
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-base font-semibold leading-6 text-foreground">
-                {i18nService.t('voiceInputQuotaExhaustedTitle')}
-              </div>
-              <div className="mt-1.5 text-sm leading-5 text-secondary">
-                {voiceQuotaDescription}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowVoiceQuotaPrompt(false)}
-              className="-mr-1 -mt-1 rounded-lg p-1 text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
-              aria-label={i18nService.t('close')}
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => { void handleVoiceQuotaPrimary(); }}
-            className="mt-5 w-full rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90"
-          >
-            {i18nService.t(isAsrSubscribed ? 'voiceInputQuotaAcknowledge' : 'voiceInputUpgradeSubscription')}
-          </button>
-        </Modal>
+        <ModelAccessPromptModal onClose={() => setModelAccessPrompt(null)} />
       )}
     </div>
   );

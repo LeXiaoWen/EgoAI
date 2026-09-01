@@ -49,11 +49,6 @@ import {
 import { openLocalPathWithToast, revealLocalPathWithToast } from '@/utils/localFileActions';
 
 import CopyIcon from '../icons/CopyIcon';
-import {
-  ArtifactPreviewActionSource,
-  getArtifactBrowserUrlType,
-  reportArtifactPreviewAction,
-} from './artifactAnalytics';
 import ArtifactRenderer from './ArtifactRenderer';
 import { resolveRemovedActiveBrowserAnnotationBatch } from './browserAnnotationSession';
 import FileDirectoryView from './FileDirectoryView';
@@ -85,8 +80,7 @@ const NON_CODE_TYPES = new Set<ArtifactType>([
   'image',
   'video',
   'text',
-  ArtifactTypeValue.LocalService,
-]);
+  ArtifactTypeValue.LocalService]);
 
 const COPYABLE_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg']);
 
@@ -284,21 +278,17 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const dispatch = useDispatch();
   const panelWidth = useSelector(selectPanelWidth);
   const activePreviewTab = useSelector((state: RootState) =>
-    selectActivePreviewTab(state, sessionId),
-  );
+    selectActivePreviewTab(state, sessionId));
   const browserAnnotationBatches = useSelector(
     (state: RootState) => (
       state.cowork.draftBrowserAnnotationBatches[sessionId]
       || EMPTY_BROWSER_ANNOTATION_BATCHES
-    ),
-  );
+    ));
   // Annotations that survive send-time normalization (comment or element edit).
   const annotationSendCount = useMemo(() => browserAnnotationBatches.reduce(
     (total, batch) => total + batch.annotations.filter(
-      annotation => hasBrowserAnnotationContent(annotation.comment, annotation.elementEdit),
-    ).length,
-    0,
-  ), [browserAnnotationBatches]);
+      annotation => hasBrowserAnnotationContent(annotation.comment, annotation.elementEdit)).length,
+    0), [browserAnnotationBatches]);
   const [showFileListDrawer, setShowFileListDrawer] = useState(false);
   const [isFileListDrawerVisible, setIsFileListDrawerVisible] = useState(false);
   const [localBrowserAddress, setLocalBrowserAddress] = useState('');
@@ -317,8 +307,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const previewableArtifacts = artifacts.filter(a => PREVIEWABLE_ARTIFACT_TYPES.has(a.type));
   const artifactsById = useMemo(
     () => new Map(artifacts.map(artifact => [artifact.id, artifact])),
-    [artifacts],
-  );
+    [artifacts]);
   const selectedArtifact = activePreviewTab
     ? (artifactsById.get(activePreviewTab.artifactId) ?? null)
     : null;
@@ -342,25 +331,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         ? { enabled: true, onAddSelectedText }
         : undefined
     ),
-    [onAddSelectedText, selectedTextEnabled],
-  );
-  const reportSelectedArtifactAction = useCallback((
-    actionType: string,
-    params?: Record<string, string | number | boolean | null | undefined>,
-  ) => {
-    reportArtifactPreviewAction({
-      actionType,
-      source: ArtifactPreviewActionSource.ArtifactPanel,
-      artifact: selectedArtifact,
-      params: {
-        tabCount: artifacts.length,
-        isPanelExpanded,
-        contentView: activeTab,
-        ...params,
-      },
-    });
-  }, [activeTab, artifacts.length, isPanelExpanded, selectedArtifact]);
-
+    [onAddSelectedText, selectedTextEnabled]);
   const isResizing = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -370,16 +341,13 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     ? Math.max(MIN_PANEL_WIDTH, maxPanelWidth)
     : Math.max(
         MIN_PANEL_WIDTH,
-        Math.min(MAX_PANEL_WIDTH, maxPanelWidth),
-      );
+        Math.min(MAX_PANEL_WIDTH, maxPanelWidth));
   const constrainedMinPanelWidth = Math.min(
     constrainedMaxPanelWidth,
-    Math.max(MIN_PANEL_WIDTH, minPanelWidth),
-  );
+    Math.max(MIN_PANEL_WIDTH, minPanelWidth));
   const constrainedPanelWidth = Math.max(
     constrainedMinPanelWidth,
-    Math.min(constrainedMaxPanelWidth, panelWidth),
-  );
+    Math.min(constrainedMaxPanelWidth, panelWidth));
   const browserAddress = controlledBrowserAddress ?? localBrowserAddress;
   const browserUrl = controlledBrowserUrl ?? localBrowserUrl;
   const browserAnnotationBatch = useMemo(
@@ -387,8 +355,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       normalizeBrowserPreviewUrlForMatch(batch.pageUrl)
       === normalizeBrowserPreviewUrlForMatch(browserUrl)
     )),
-    [browserAnnotationBatches, browserUrl],
-  );
+    [browserAnnotationBatches, browserUrl]);
   const browserHtmlAutoRefreshFilePath =
     isBrowserTabActive && browserHtmlArtifact?.type === ArtifactTypeValue.Html
       ? browserHtmlArtifact.filePath
@@ -399,25 +366,21 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
   const showRefreshAction = Boolean(selectedArtifact?.filePath);
   const showCopyAction = Boolean(selectedArtifact && isCopyableArtifact(selectedArtifact));
   const showOpenBrowserAction = Boolean(
-    selectedArtifact && BROWSER_OPENABLE_TYPES.has(selectedArtifact.type),
-  );
+    selectedArtifact && BROWSER_OPENABLE_TYPES.has(selectedArtifact.type));
   const showOpenWithAppAction = Boolean(
     selectedArtifact &&
       SYSTEM_OPENABLE_TYPES.has(selectedArtifact.type) &&
-      selectedArtifact.filePath,
-  );
+      selectedArtifact.filePath);
   const showRevealInFolderAction = Boolean(selectedArtifact?.filePath);
   const showPrimaryOpenWithAppAction = Boolean(!isCompactHtmlToolbar && showOpenWithAppAction);
   const showPrimaryRevealInFolderAction = Boolean(
     !isCompactHtmlToolbar &&
       !showPrimaryOpenWithAppAction &&
-      showRevealInFolderAction,
-  );
+      showRevealInFolderAction);
   const showOpenBrowserActionInMenu = Boolean(!isCompactHtmlToolbar && showOpenBrowserAction);
   const showOpenWithAppActionInMenu = Boolean(isCompactHtmlToolbar && showOpenWithAppAction);
   const showRevealInFolderActionInMenu = Boolean(
-    showRevealInFolderAction && !showPrimaryRevealInFolderAction,
-  );
+    showRevealInFolderAction && !showPrimaryRevealInFolderAction);
   const showContentViewActionInMenu = canShowCodeView;
   const showOfficeZoomControlsInMenu = Boolean(officePreviewZoomControls);
   const hasArtifactActionMenuItems = Boolean(
@@ -426,34 +389,29 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       showCopyAction ||
       showOpenBrowserActionInMenu ||
       showOpenWithAppActionInMenu ||
-      showRevealInFolderActionInMenu,
-  );
+      showRevealInFolderActionInMenu);
   const showArtifactActionsMenu = Boolean(
     isCompactArtifactToolbar &&
-      (hasArtifactActionMenuItems || showOfficeZoomControlsInMenu),
-  );
+      (hasArtifactActionMenuItems || showOfficeZoomControlsInMenu));
   const officePreviewActionsContextValue = useMemo(
     () => ({
       setZoomControls: setOfficePreviewZoomControls,
     }),
-    [],
-  );
+    []);
 
   const handleBrowserAddressChange = useCallback(
     (value: string) => {
       setLocalBrowserAddress(value);
       onBrowserAddressChange?.(value);
     },
-    [onBrowserAddressChange],
-  );
+    [onBrowserAddressChange]);
 
   const handleBrowserUrlChange = useCallback(
     (value: string) => {
       setLocalBrowserUrl(value);
       onBrowserUrlChange?.(value);
     },
-    [onBrowserUrlChange],
-  );
+    [onBrowserUrlChange]);
 
 
 
@@ -491,24 +449,17 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
   const toggleFileListDrawer = useCallback(() => {
     if (showFileListDrawer && isFileListDrawerVisible) {
-      reportSelectedArtifactAction('file_list_drawer_toggle', {
-        targetOpen: false,
-      });
+      
       closeFileListDrawer();
       return;
     }
 
-    reportSelectedArtifactAction('file_list_drawer_toggle', {
-      targetOpen: true,
-    });
+    
     openFileListDrawer();
   }, [
     closeFileListDrawer,
     isFileListDrawerVisible,
-    openFileListDrawer,
-    reportSelectedArtifactAction,
-    showFileListDrawer,
-  ]);
+    openFileListDrawer,showFileListDrawer]);
 
   const handleResizeStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -544,8 +495,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         }
         const clampedWidth = Math.max(
           constrainedMinPanelWidth,
-          Math.min(constrainedMaxPanelWidth, nextWidth),
-        );
+          Math.min(constrainedMaxPanelWidth, nextWidth));
         dispatch(setPanelWidth(clampedWidth));
       };
 
@@ -563,9 +513,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       constrainedPanelWidth,
       dispatch,
       isPanelExpanded,
-      sessionId,
-    ],
-  );
+      sessionId]);
 
   useEffect(() => {
     return () => {
@@ -687,21 +635,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       handleBrowserUrlChange(url);
       return true;
     },
-    [handleBrowserAddressChange, handleBrowserUrlChange, onOpenBrowserTab],
-  );
+    [handleBrowserAddressChange, handleBrowserUrlChange, onOpenBrowserTab]);
 
   const handleSelectArtifact = useCallback(
     (id: string) => {
       const artifact = artifacts.find(item => item.id === id);
-      reportArtifactPreviewAction({
-        actionType: 'file_list_select_artifact',
-        source: 'artifact_panel',
-        artifact,
-        params: {
-          tabCount: artifacts.length,
-          entry: 'file_list',
-        },
-      });
+      
       if (artifact && openLocalServiceArtifact(artifact)) return;
       if (artifact?.type === ArtifactTypeValue.Html && artifact.filePath && onOpenHtmlFileInBrowser) {
         onOpenHtmlFileInBrowser(artifact);
@@ -716,22 +655,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       onOpenFileListTab,
       onOpenHtmlFileInBrowser,
       openLocalServiceArtifact,
-      sessionId,
-    ],
-  );
+      sessionId]);
 
   const handleSelectArtifactFromDrawer = useCallback(
     (id: string) => {
       const artifact = artifacts.find(item => item.id === id);
-      reportArtifactPreviewAction({
-        actionType: 'file_list_select_artifact',
-        source: 'artifact_panel',
-        artifact,
-        params: {
-          tabCount: artifacts.length,
-          entry: 'drawer',
-        },
-      });
+      
       if (artifact && openLocalServiceArtifact(artifact)) {
         closeFileListDrawer();
         return;
@@ -750,26 +679,20 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       dispatch,
       onOpenHtmlFileInBrowser,
       openLocalServiceArtifact,
-      sessionId,
-    ],
-  );
+      sessionId]);
 
   const handleSetContentView = useCallback(
     (contentView: ArtifactContentView) => {
       if (!activePreviewTab) return;
-      reportSelectedArtifactAction('content_view_change', {
-        targetContentView: contentView,
-      });
+      
       dispatch(
         setPreviewTabContentView({
           sessionId,
           tabId: activePreviewTab.id,
           contentView,
-        }),
-      );
+        }));
     },
-    [activePreviewTab, dispatch, reportSelectedArtifactAction, sessionId],
-  );
+    [activePreviewTab, dispatch,sessionId]);
 
 
   const handleCopy = useCallback(async () => {
@@ -778,14 +701,12 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
       if (selectedArtifact.type === 'image') {
         if (selectedArtifact.filePath) {
           const result = await window.electron?.clipboard?.writeImageFromFile(
-            selectedArtifact.filePath,
-          );
+            selectedArtifact.filePath);
           if (!result?.success) {
             logArtifactFileActionFailure('copy artifact image', result?.error);
-            reportSelectedArtifactAction('copy_content', { result: 'failed' });
+            
             window.dispatchEvent(
-              new CustomEvent('app:showToast', { detail: result?.error || t('copyFailed') }),
-            );
+              new CustomEvent('app:showToast', { detail: result?.error || t('copyFailed') }));
             return;
           }
         } else if (selectedArtifact.content) {
@@ -798,9 +719,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           if (result?.truncated) {
             logArtifactFileActionFailure(
               'copy artifact content',
-              `file exceeds read limit; size=${result.size ?? 'unknown'}, readBytes=${result.readBytes ?? 'unknown'}`,
-            );
-            reportSelectedArtifactAction('copy_content', { result: 'failed' });
+              `file exceeds read limit; size=${result.size ?? 'unknown'}, readBytes=${result.readBytes ?? 'unknown'}`);
+            
             window.dispatchEvent(new CustomEvent('app:showToast', {
               detail: t('fileMenuCopyContentsTooLarge'),
             }));
@@ -808,7 +728,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           }
           if (!result?.success || typeof result.content !== 'string') {
             logArtifactFileActionFailure('copy artifact content', result?.error);
-            reportSelectedArtifactAction('copy_content', { result: 'failed' });
+            
             window.dispatchEvent(new CustomEvent('app:showToast', { detail: result?.error || t('copyFailed') }));
             return;
           }
@@ -821,28 +741,24 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           }
         }
       }
-      reportSelectedArtifactAction('copy_content', { result: 'success' });
+      
       window.dispatchEvent(new CustomEvent('app:showToast', { detail: t('messageCopied') }));
     } catch (error) {
       logArtifactFileActionFailure('copy artifact content', error);
-      reportSelectedArtifactAction('copy_content', { result: 'failed' });
+      
       window.dispatchEvent(new CustomEvent('app:showToast', { detail: t('copyFailed') }));
     }
-  }, [reportSelectedArtifactAction, selectedArtifact]);
+  }, [selectedArtifact]);
 
   const handleRevealInFolder = useCallback(() => {
     if (!selectedArtifact?.filePath) return;
-    reportSelectedArtifactAction('reveal_in_folder', {
-      openTarget: 'folder',
-    });
+    
     void revealLocalPathWithToast(selectedArtifact.filePath);
-  }, [reportSelectedArtifactAction, selectedArtifact]);
+  }, [selectedArtifact]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!selectedArtifact) return;
-    reportSelectedArtifactAction('open_in_browser', {
-      openTarget: selectedArtifact.type === ArtifactTypeValue.Html ? 'ego_browser' : 'external_browser',
-    });
+    
 
     if (
       selectedArtifact.type === ArtifactTypeValue.Html &&
@@ -878,7 +794,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
     if (html) {
       window.electron?.shell?.openHtmlInBrowser(html);
     }
-  }, [onOpenHtmlFileInBrowser, reportSelectedArtifactAction, selectedArtifact]);
+  }, [onOpenHtmlFileInBrowser,selectedArtifact]);
 
 
 
@@ -936,12 +852,10 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
   const handleOpenWithApp = useCallback(() => {
     if (selectedArtifact?.filePath) {
-      reportSelectedArtifactAction('open_with_app', {
-        openTarget: 'external_app',
-      });
+      
       void openLocalPathWithToast(normalizeShellFilePath(selectedArtifact.filePath));
     }
-  }, [reportSelectedArtifactAction, selectedArtifact]);
+  }, [selectedArtifact]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedArtifact?.filePath) return;
@@ -950,7 +864,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         sessionId: selectedArtifact.sessionId,
         artifact: { ...selectedArtifact, createdAt: Date.now() },
       }));
-      reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+      
       return;
     }
     try {
@@ -962,7 +876,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             contentVersion: Date.now(),
           },
         }));
-        reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+        
         return;
       }
 
@@ -972,9 +886,8 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         if (result?.truncated) {
           logArtifactFileActionFailure(
             'refresh artifact source',
-            `file exceeds read limit; size=${result.size ?? 'unknown'}, readBytes=${result.readBytes ?? 'unknown'}`,
-          );
-          reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+            `file exceeds read limit; size=${result.size ?? 'unknown'}, readBytes=${result.readBytes ?? 'unknown'}`);
+          
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: t('artifactSourceTooLarge'),
           }));
@@ -985,10 +898,10 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
             sessionId: selectedArtifact.sessionId,
             artifact: { ...selectedArtifact, content: result.content, contentVersion: Date.now() },
           }));
-          reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+          
         } else {
           logArtifactFileActionFailure('refresh artifact source', result?.error);
-          reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+          
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: result?.error || t('artifactSourceLoadFailed'),
           }));
@@ -1014,24 +927,23 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
           addArtifact({
             sessionId: selectedArtifact.sessionId,
             artifact: { ...selectedArtifact, content },
-          }),
-        );
-        reportSelectedArtifactAction('refresh_preview', { result: 'success' });
+          }));
+        
       } else {
         logArtifactFileActionFailure('refresh artifact preview', result?.error);
-        reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+        
         window.dispatchEvent(new CustomEvent('app:showToast', {
           detail: result?.error || t('artifactSourceLoadFailed'),
         }));
       }
     } catch (error) {
       logArtifactFileActionFailure('refresh artifact preview', error);
-      reportSelectedArtifactAction('refresh_preview', { result: 'failed' });
+      
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: t('artifactSourceLoadFailed'),
       }));
     }
-  }, [selectedArtifact, dispatch, reportSelectedArtifactAction]);
+  }, [selectedArtifact, dispatch]);
 
   const handleRefreshRef = useRef(handleRefresh);
   handleRefreshRef.current = handleRefresh;
@@ -1081,9 +993,7 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
                     type="button"
                     onClick={() => setIsArtifactActionsMenuOpen(value => {
                       const nextOpen = !value;
-                      reportSelectedArtifactAction('actions_menu_toggle', {
-                        targetOpen: nextOpen,
-                      });
+                      
                       return nextOpen;
                     })}
                     className={`p-1 rounded transition-colors ${
@@ -1387,8 +1297,7 @@ function getBrowserTitleBaseName(value: string | undefined): string {
 function normalizeBrowserPageTitle(
   title: string | undefined,
   pageUrl: string | undefined,
-  address: string | undefined,
-): string {
+  address: string | undefined): string {
   const normalizedTitle = title?.trim() ?? '';
   if (!normalizedTitle) return '';
   const lowerTitle = normalizedTitle.toLowerCase();
@@ -1474,8 +1383,7 @@ const BROWSER_DEVICE_PRESETS: BrowserDevicePreset[] = [
     width: 384,
     height: 824,
   },
-  { id: BrowserDevicePresetId.IPhoneSe, label: 'iPhone SE', width: 375, height: 667 },
-];
+  { id: BrowserDevicePresetId.IPhoneSe, label: 'iPhone SE', width: 375, height: 667 }];
 
 const BROWSER_DEVICE_SCALE_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -1498,8 +1406,7 @@ export interface BrowserAnnotationResult {
 export function normalizeBrowserAnnotationRect(
   rect: BrowserAnnotationRect,
   viewport: BrowserAnnotationScreenshotInfo | undefined,
-  screenshot: BrowserAnnotationScreenshotInfo,
-): BrowserAnnotationMarkInfo {
+  screenshot: BrowserAnnotationScreenshotInfo): BrowserAnnotationMarkInfo {
   const screenshotWidth = screenshot.width > 0 ? screenshot.width : 1;
   const screenshotHeight = screenshot.height > 0 ? screenshot.height : 1;
   const viewportWidth = viewport?.width && viewport.width > 0 ? viewport.width : screenshotWidth;
@@ -1558,16 +1465,14 @@ function clampBrowserDeviceSize(value: number): number {
   if (!Number.isFinite(value)) return BrowserDeviceViewport.MinSize;
   return Math.max(
     BrowserDeviceViewport.MinSize,
-    Math.min(BrowserDeviceViewport.MaxSize, Math.round(value)),
-  );
+    Math.min(BrowserDeviceViewport.MaxSize, Math.round(value)));
 }
 
 function clampBrowserDeviceScale(value: number): number {
   if (!Number.isFinite(value)) return BrowserDeviceScale.Default;
   return Math.max(
     BrowserDeviceScale.Min,
-    Math.min(BrowserDeviceScale.Max, Number(value.toFixed(2))),
-  );
+    Math.min(BrowserDeviceScale.Max, Number(value.toFixed(2))));
 }
 
 function getBrowserDevicePresetLabel(preset: BrowserDevicePreset): string {
@@ -1588,8 +1493,7 @@ function isLocalServiceHostname(hostname: string): boolean {
 function parseLocalServiceUrl(
   rawUrl: string | undefined,
   title?: string,
-  projectDirectory?: string,
-): LocalWebService | null {
+  projectDirectory?: string): LocalWebService | null {
   if (!rawUrl) return null;
   try {
     const parsed = new URL(rawUrl.trim());
@@ -1615,8 +1519,7 @@ function parseLocalServiceArtifact(artifact: Artifact): LocalWebService | null {
   return parseLocalServiceUrl(
     artifact.url || artifact.content,
     artifact.title,
-    artifact.localService?.projectDirectory,
-  );
+    artifact.localService?.projectDirectory);
 }
 
 function shouldPreferLocalService(candidate: LocalWebService, current: LocalWebService): boolean {
@@ -1642,8 +1545,7 @@ function getSessionLocalServices(artifacts: Artifact[] | undefined): LocalWebSer
 
 function mergeLocalServices(
   sessionServices: LocalWebService[],
-  discoveredServices: LocalWebService[],
-): LocalWebService[] {
+  discoveredServices: LocalWebService[]): LocalWebService[] {
   const byPort = new Map<number, LocalWebService>();
   const discoveredByPort = new Map(discoveredServices.map(service => [service.port, service]));
 
@@ -1927,8 +1829,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
   const [canGoForward, setCanGoForward] = useState(false);
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false);
   const [screenshotStatus, setScreenshotStatus] = useState<BrowserScreenshotStatus>(
-    BrowserScreenshotStatus.Idle,
-  );
+    BrowserScreenshotStatus.Idle);
   const [isAnnotating, setIsAnnotating] = useState(false);
   const browserTabIdRef = useRef(crypto.randomUUID());
   const documentIdRef = useRef(crypto.randomUUID());
@@ -1945,8 +1846,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
   const [localServices, setLocalServices] = useState<LocalWebService[]>([]);
   const [isLoadingLocalServices, setIsLoadingLocalServices] = useState(false);
   const [hoveredToolbarAction, setHoveredToolbarAction] = useState<BrowserToolbarAction | null>(
-    null,
-  );
+    null);
   const [toolbarTooltipPosition, setToolbarTooltipPosition] =
     useState<BrowserToolbarTooltipPosition | null>(null);
   const [webviewNode, setWebviewNode] = useState<BrowserWebviewElement | null>(null);
@@ -1957,8 +1857,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
   const [isAddressBarFocused, setIsAddressBarFocused] = useState(false);
   const [isAddressOpenExternalHovered, setIsAddressOpenExternalHovered] = useState(false);
   const [devicePresetId, setDevicePresetId] = useState<BrowserDevicePresetId>(
-    BrowserDevicePresetId.Responsive,
-  );
+    BrowserDevicePresetId.Responsive);
   const [deviceWidth, setDeviceWidth] = useState<number>(BrowserDeviceViewport.DefaultWidth);
   const [deviceHeight, setDeviceHeight] = useState<number>(BrowserDeviceViewport.DefaultHeight);
   const [deviceScale, setDeviceScale] = useState<number>(BrowserDeviceScale.Default);
@@ -1975,39 +1874,11 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
   const webviewNodeRef = useRef<BrowserWebviewElement | null>(null);
   const sessionLocalServices = useMemo(
     () => getSessionLocalServices(sessionArtifacts),
-    [sessionArtifacts],
-  );
-  const reportBrowserAction = useCallback((
-    actionType: string,
-    params?: Record<string, string | number | boolean | null | undefined>,
-  ) => {
-    reportArtifactPreviewAction({
-      actionType,
-      source: 'artifact_browser',
-      params: {
-        browserUrlType: getArtifactBrowserUrlType(currentUrl || address),
-        hasCurrentUrl: Boolean(currentUrl),
-        isDeviceToolbarVisible,
-        browserZoomPercent: Math.round(browserZoomFactor * 100),
-        devicePreset: devicePresetId,
-        deviceScalePercent: Math.round(deviceScale * 100),
-        ...params,
-      },
-    });
-  }, [
-    address,
-    browserZoomFactor,
-    currentUrl,
-    devicePresetId,
-    deviceScale,
-    isDeviceToolbarVisible,
-  ]);
-
+    [sessionArtifacts]);
   const sendAnnotationCommand = useCallback((
     type: string,
     batch: CoworkBrowserAnnotationBatch,
-    payload: Partial<BrowserAnnotationGuestEnvelope> = {},
-  ) => {
+    payload: Partial<BrowserAnnotationGuestEnvelope> = {})=> {
     annotationRevisionRef.current += 1;
     webviewNodeRef.current?.send?.(BrowserAnnotationGuestChannel.Command, {
       protocolVersion: BrowserAnnotationProtocolVersion,
@@ -2025,8 +1896,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
     const removedBatch = resolveRemovedActiveBrowserAnnotationBatch(
       annotationBatchRef.current,
       annotationBatch,
-      isAnnotating,
-    );
+      isAnnotating);
     annotationBatchRef.current = annotationBatch;
     if (!removedBatch) return;
 
@@ -2049,8 +1919,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
 
   const captureBrowserAnnotation = useCallback(async (
     batch: CoworkBrowserAnnotationBatch,
-    annotation: CoworkBrowserAnnotation,
-  ) => {
+    annotation: CoworkBrowserAnnotation)=> {
     if (activeCaptureIdsRef.current.has(annotation.id)) return;
     activeCaptureIdsRef.current.add(annotation.id);
     const requestId = annotation.screenshot.status === BrowserAnnotationScreenshotStatus.Capturing
@@ -2222,8 +2091,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
       }
     }
     for (const removed of batch.annotations.filter(
-      annotation => !message.annotations?.some(item => item.id === annotation.id),
-    )) {
+      annotation => !message.annotations?.some(item => item.id === annotation.id))) {
       if (removed.screenshot.status === BrowserAnnotationScreenshotStatus.Ready) {
         void window.electron?.artifact?.deleteBrowserAnnotationAsset({
           draftKey,
@@ -2262,8 +2130,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
     setIsAddressBarFocused(false);
     setIsAddressOpenExternalHovered(false);
     setHoveredToolbarAction(action =>
-      action === BrowserToolbarAction.OpenExternal ? null : action,
-    );
+      action === BrowserToolbarAction.OpenExternal ? null : action);
   }, []);
 
   useEffect(
@@ -2274,9 +2141,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
       if (autoRefreshTimeoutRef.current !== undefined) {
         window.clearTimeout(autoRefreshTimeoutRef.current);
       }
-    },
-    [],
-  );
+    }, []);
 
   useEffect(() => {
     if (!isAddressBarFocused && !isAddressOpenExternalHovered) return undefined;
@@ -2372,8 +2237,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
       }
       return nextUrl;
     },
-    [autoRefreshFilePath, localHtmlPreviewUrl],
-  );
+    [autoRefreshFilePath, localHtmlPreviewUrl]);
 
   const syncBrowserTitle = useCallback(
     (node: BrowserWebviewElement | null) => {
@@ -2399,8 +2263,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
           emitTitle(node.getTitle?.());
         });
     },
-    [address, currentUrl, onTitleChange],
-  );
+    [address, currentUrl, onTitleChange]);
 
   const syncNavigationState = useCallback(
     (node: BrowserWebviewElement | null) => {
@@ -2414,8 +2277,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         onAddressChange(getBrowserAddressForUrl(nextUrl));
       }
     },
-    [getBrowserAddressForUrl, onAddressChange, onCurrentUrlChange, syncBrowserTitle],
-  );
+    [getBrowserAddressForUrl, onAddressChange, onCurrentUrlChange, syncBrowserTitle]);
 
   const getToolbarActionElement = useCallback(
     (action: BrowserToolbarAction): HTMLDivElement | null => {
@@ -2427,9 +2289,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         default:
           return null;
       }
-    },
-    [],
-  );
+    }, []);
 
   useLayoutEffect(() => {
     if (!hoveredToolbarAction) {
@@ -2528,8 +2388,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
     sendAnnotationCommand,
     syncBrowserTitle,
     syncNavigationState,
-    webviewNode,
-  ]);
+    webviewNode]);
 
   useEffect(() => {
     if (!isWebviewReady || !webviewNode?.setZoomFactor) return;
@@ -2599,9 +2458,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
 
   const handleNavigate = useCallback(() => {
     const trimmedAddress = address.trim();
-    reportBrowserAction('browser_address_submit', {
-      browserUrlType: getArtifactBrowserUrlType(trimmedAddress),
-    });
+    
     if (
       autoRefreshFilePath &&
       localHtmlPreviewUrl &&
@@ -2625,23 +2482,16 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
     localHtmlPreviewUrl,
     onAddressChange,
     onCurrentUrlChange,
-    onTitleChange,
-    reportBrowserAction,
-  ]);
+    onTitleChange]);
 
   const handleOpenLocalService = useCallback(
     (service: LocalWebService) => {
-      reportBrowserAction('browser_open_local_service', {
-        browserUrlType: 'localhost',
-        servicePort: service.port,
-        serviceOnline: service.online,
-      });
+      
       onTitleChange?.('');
       onCurrentUrlChange(service.url);
       onAddressChange(service.url);
     },
-    [onAddressChange, onCurrentUrlChange, onTitleChange, reportBrowserAction],
-  );
+    [onAddressChange, onCurrentUrlChange, onTitleChange]);
 
   const handleAddressKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -2649,8 +2499,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         handleNavigate();
       }
     },
-    [handleNavigate],
-  );
+    [handleNavigate]);
 
   const handleAddressFocus = useCallback((event: React.FocusEvent<HTMLInputElement>) => {
     setIsAddressBarFocused(true);
@@ -2689,70 +2538,51 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
 
   const handleOpenExternal = useCallback(() => {
     if (!currentUrl) return;
-    reportBrowserAction('browser_open_external', {
-      browserUrlType: getArtifactBrowserUrlType(currentUrl),
-    });
+    
     window.electron?.shell?.openExternal(currentUrl);
-  }, [currentUrl, reportBrowserAction]);
+  }, [currentUrl]);
 
   const handleToggleDeviceToolbar = useCallback(() => {
     setIsDeviceToolbarVisible(value => {
       const nextVisible = !value;
-      reportBrowserAction('browser_device_toolbar_toggle', {
-        targetOpen: nextVisible,
-      });
+      
       return nextVisible;
     });
     setIsBrowserMenuOpen(false);
-  }, [reportBrowserAction]);
+  }, []);
 
   const handleDevicePresetChange = useCallback((value: string) => {
     const preset = BROWSER_DEVICE_PRESETS.find(item => item.id === value);
     if (!preset) return;
-    reportBrowserAction('browser_device_preset_change', {
-      targetDevicePreset: preset.id,
-      targetDeviceWidth: preset.width,
-      targetDeviceHeight: preset.height,
-    });
+    
     setDevicePresetId(preset.id);
     setDeviceWidth(preset.width);
     setDeviceHeight(preset.height);
-  }, [reportBrowserAction]);
+  }, []);
 
   const handleDeviceWidthChange = useCallback((value: string) => {
-    reportBrowserAction('browser_device_size_change', {
-      dimension: 'width',
-      targetDeviceSize: clampBrowserDeviceSize(Number(value)),
-    });
+    
     setDevicePresetId(BrowserDevicePresetId.Responsive);
     setDeviceWidth(clampBrowserDeviceSize(Number(value)));
-  }, [reportBrowserAction]);
+  }, []);
 
   const handleDeviceHeightChange = useCallback((value: string) => {
-    reportBrowserAction('browser_device_size_change', {
-      dimension: 'height',
-      targetDeviceSize: clampBrowserDeviceSize(Number(value)),
-    });
+    
     setDevicePresetId(BrowserDevicePresetId.Responsive);
     setDeviceHeight(clampBrowserDeviceSize(Number(value)));
-  }, [reportBrowserAction]);
+  }, []);
 
   const handleRotateDevice = useCallback(() => {
-    reportBrowserAction('browser_device_rotate', {
-      targetDeviceWidth: deviceHeight,
-      targetDeviceHeight: deviceWidth,
-    });
+    
     setDevicePresetId(BrowserDevicePresetId.Responsive);
     setDeviceWidth(deviceHeight);
     setDeviceHeight(deviceWidth);
-  }, [deviceHeight, deviceWidth, reportBrowserAction]);
+  }, [deviceHeight, deviceWidth]);
 
   const handleDeviceScaleChange = useCallback((value: string) => {
-    reportBrowserAction('browser_device_scale_change', {
-      targetDeviceScalePercent: Math.round(clampBrowserDeviceScale(Number(value)) * 100),
-    });
+    
     setDeviceScale(clampBrowserDeviceScale(Number(value)));
-  }, [reportBrowserAction]);
+  }, []);
 
   const applyBrowserZoom = useCallback(
     (nextFactor: number) => {
@@ -2760,91 +2590,72 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
       setBrowserZoomFactor(clampedFactor);
       webviewNode?.setZoomFactor?.(clampedFactor);
     },
-    [webviewNode],
-  );
+    [webviewNode]);
 
   const handleZoomOut = useCallback(() => {
-    reportBrowserAction('browser_zoom_out', {
-      targetBrowserZoomPercent: Math.round(clampBrowserZoomFactor(browserZoomFactor - BrowserZoom.Step) * 100),
-    });
+    
     applyBrowserZoom(browserZoomFactor - BrowserZoom.Step);
-  }, [applyBrowserZoom, browserZoomFactor, reportBrowserAction]);
+  }, [applyBrowserZoom, browserZoomFactor]);
 
   const handleZoomIn = useCallback(() => {
-    reportBrowserAction('browser_zoom_in', {
-      targetBrowserZoomPercent: Math.round(clampBrowserZoomFactor(browserZoomFactor + BrowserZoom.Step) * 100),
-    });
+    
     applyBrowserZoom(browserZoomFactor + BrowserZoom.Step);
-  }, [applyBrowserZoom, browserZoomFactor, reportBrowserAction]);
+  }, [applyBrowserZoom, browserZoomFactor]);
 
   const handleResetZoom = useCallback(() => {
-    reportBrowserAction('browser_zoom_reset', {
-      targetBrowserZoomPercent: Math.round(BrowserZoom.Default * 100),
-    });
+    
     applyBrowserZoom(BrowserZoom.Default);
-  }, [applyBrowserZoom, reportBrowserAction]);
+  }, [applyBrowserZoom]);
 
   const handleOpenBlankPage = useCallback(() => {
-    reportBrowserAction('browser_open_blank_page');
+    
     setIsBrowserMenuOpen(false);
     lastRequestedUrlRef.current = '';
     lastRequestedWebviewRef.current = null;
     onAddressChange('');
     onCurrentUrlChange('');
     onTitleChange?.('');
-  }, [onAddressChange, onCurrentUrlChange, onTitleChange, reportBrowserAction]);
+  }, [onAddressChange, onCurrentUrlChange, onTitleChange]);
 
   const handleClearBrowserCookies = useCallback(async () => {
     setIsBrowserMenuOpen(false);
-    let success = false;
     try {
       const result = await window.electron?.artifact?.clearBrowserCookies?.();
-      success = Boolean(result?.success);
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: result?.success
             ? t('artifactBrowserCookiesCleared')
             : result?.error || t('artifactBrowserClearCookiesFailed'),
-        }),
-      );
+        }));
     } catch {
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: t('artifactBrowserClearCookiesFailed'),
-        }),
-      );
+        }));
     } finally {
-      reportBrowserAction('browser_clear_cookies', {
-        result: success ? 'success' : 'failed',
-      });
+      
     }
-  }, [reportBrowserAction]);
+  }, []);
 
   const handleClearBrowserCache = useCallback(async () => {
     setIsBrowserMenuOpen(false);
-    let success = false;
     try {
       const result = await window.electron?.artifact?.clearBrowserCache?.();
-      success = Boolean(result?.success);
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: result?.success
             ? t('artifactBrowserCacheCleared')
             : result?.error || t('artifactBrowserClearCacheFailed'),
-        }),
-      );
+        }));
     } catch {
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: t('artifactBrowserClearCacheFailed'),
-        }),
-      );
+        }));
     } finally {
-      reportBrowserAction('browser_clear_cache', {
-        result: success ? 'success' : 'failed',
-      });
+      
     }
-  }, [reportBrowserAction]);
+  }, []);
 
   const setTemporaryScreenshotStatus = useCallback((status: BrowserScreenshotStatus) => {
     setScreenshotStatus(status);
@@ -2867,28 +2678,22 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         throw new Error(result?.error || 'Failed to write browser screenshot to clipboard');
       }
       setTemporaryScreenshotStatus(BrowserScreenshotStatus.Copied);
-      reportBrowserAction('browser_screenshot', {
-        result: 'success',
-      });
+      
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: t('artifactBrowserScreenshotCopied'),
-        }),
-      );
+        }));
     } catch {
       setTemporaryScreenshotStatus(BrowserScreenshotStatus.Error);
-      reportBrowserAction('browser_screenshot', {
-        result: 'failed',
-      });
+      
       window.dispatchEvent(
         new CustomEvent('app:showToast', {
           detail: t('artifactBrowserScreenshotFailed'),
-        }),
-      );
+        }));
     } finally {
       setIsCapturingScreenshot(false);
     }
-  }, [currentUrl, isCapturingScreenshot, reportBrowserAction, setTemporaryScreenshotStatus, webviewNode]);
+  }, [currentUrl, isCapturingScreenshot,setTemporaryScreenshotStatus, webviewNode]);
 
   const handleCaptureScreenshotFromMenu = useCallback(() => {
     setIsBrowserMenuOpen(false);
@@ -2898,13 +2703,13 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
   const handleToggleAnnotation = useCallback(async () => {
     if (!webviewNode?.send || !webviewNode.capturePage || !currentUrl) return;
     if (isAnnotating) {
-      reportBrowserAction('browser_annotate_cancel');
+      
       const batch = annotationBatchRef.current;
       if (batch) sendAnnotationCommand(BrowserAnnotationGuestCommandType.Stop, batch);
       setIsAnnotating(false);
       return;
     }
-    reportBrowserAction('browser_annotate_start');
+    
     const now = Date.now();
     const currentNormalizedUrl = normalizeBrowserPreviewUrlForMatch(currentUrl);
     const existing = annotationBatchRef.current?.pageUrl
@@ -2969,7 +2774,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         complexText: t('artifactBrowserAnnotationComplexText'),
       },
     });
-  }, [commitAnnotationBatch, currentUrl, isAnnotating, reportBrowserAction, sendAnnotationCommand, webviewNode]);
+  }, [commitAnnotationBatch, currentUrl, isAnnotating,sendAnnotationCommand, webviewNode]);
 
   const screenshotButtonTitle =
     screenshotStatus === BrowserScreenshotStatus.Copied
@@ -2992,7 +2797,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         <button
           type="button"
           onClick={() => {
-            reportBrowserAction('browser_back');
+            
             webviewNode?.goBack?.();
           }}
           disabled={!canGoBack}
@@ -3004,7 +2809,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         <button
           type="button"
           onClick={() => {
-            reportBrowserAction('browser_forward');
+            
             webviewNode?.goForward?.();
           }}
           disabled={!canGoForward}
@@ -3016,7 +2821,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
         <button
           type="button"
           onClick={() => {
-            reportBrowserAction(isLoading ? 'browser_stop' : 'browser_reload');
+            
             if (isLoading) {
               webviewNode?.stop?.();
             } else {
@@ -3102,9 +2907,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
             <button
               type="button"
               onClick={() => {
-                reportBrowserAction('browser_annotation_send', {
-                  annotationCount: annotationSendCount,
-                });
+                
                 onAnnotationSend();
               }}
               className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-primary pl-2.5 pr-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
@@ -3120,9 +2923,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
             type="button"
             onClick={() => setIsBrowserMenuOpen(value => {
               const nextOpen = !value;
-              reportBrowserAction('browser_more_menu_toggle', {
-                targetOpen: nextOpen,
-              });
+              
               return nextOpen;
             })}
             className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 ${
@@ -3236,8 +3037,7 @@ const BrowserTabContent: React.FC<BrowserTabContentProps> = ({
           >
             {hoveredToolbarLabel}
           </div>,
-          document.body,
-        )}
+          document.body)}
       {currentUrl ? (
         <div className="flex min-h-0 flex-1 flex-col bg-background">
           {isDeviceToolbarVisible && (

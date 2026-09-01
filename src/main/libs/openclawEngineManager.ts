@@ -23,7 +23,6 @@ import {
 } from './gatewayLogRotation';
 import { recoverInstallerResourcesFromTar } from './installerResourceRecovery';
 import { mergeNoProxyValue } from './noProxyEnv';
-import { getCodexHomeDir } from './openaiCodexAuth';
 import { migrateLegacyCronStorageWithDoctor } from './openclawCronLegacyMigration';
 import { cleanupStaleGatewayLocks, GatewayLockCleanupAction } from './openclawGatewayLock';
 import { cleanupStaleThirdPartyPluginsFromBundledDir, listLocalOpenClawExtensionIds,syncLocalOpenClawExtensionsIntoRuntime } from './openclawLocalExtensions';
@@ -656,10 +655,6 @@ export class OpenClawEngineManager extends EventEmitter {
       OPENCLAW_HOME: this.baseDir,
       OPENCLAW_STATE_DIR: this.stateDir,
       OPENCLAW_CONFIG_PATH: this.configPath,
-      // Point the OpenAI provider's ChatGPT/Codex auth lookup at our app-managed
-      // directory so it doesn't fight with a system Codex CLI install
-      // (~/.codex/auth.json).  See src/main/libs/openaiCodexAuth.ts.
-      CODEX_HOME: getCodexHomeDir(),
       OPENCLAW_GATEWAY_TOKEN: token,
       OPENCLAW_GATEWAY_PORT: String(port),
       OPENCLAW_NO_RESPAWN: '1',

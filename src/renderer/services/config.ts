@@ -542,15 +542,7 @@ const alignProviderModelOrder = (
   });
 };
 
-const omitLegacyVoiceInputConfig = (config: AppConfig): AppConfig => {
-  const { voiceInput: _legacyVoiceInput, ...nextConfig } = config as AppConfig & {
-    voiceInput?: unknown;
-  };
-  return nextConfig;
-};
-
 const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
-  const storedWithoutLegacyVoiceInput = omitLegacyVoiceInputConfig(storedConfig);
   const providerModelMigrationVersions = {
     ...(storedConfig.providerModelMigrationVersions ?? {}),
   };
@@ -667,7 +659,7 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
 
   return migrateCustomProviders({
     ...defaultConfig,
-    ...storedWithoutLegacyVoiceInput,
+    ...storedConfig,
     api: {
       ...defaultConfig.api,
       ...storedConfig.api,
@@ -771,7 +763,7 @@ class ConfigService {
     const stored = await localStore.getItemStrict<AppConfig>(CONFIG_KEYS.APP_CONFIG);
     const base = stored ? hydrateStoredConfig(stored) : this.config;
 
-    this.config = omitLegacyVoiceInputConfig({
+    this.config = {
       ...base,
       ...newConfig,
       ...(normalizedProviders ? { providers: normalizedProviders } : {}),
@@ -796,7 +788,7 @@ class ConfigService {
       notificationSettings: normalizeNotificationSettings(
         newConfig.notificationSettings ?? base.notificationSettings,
       ),
-    } as AppConfig);
+    } as AppConfig;
     await localStore.setItem(CONFIG_KEYS.APP_CONFIG, this.config);
     window.dispatchEvent(new CustomEvent(ConfigServiceEvent.Updated));
   }

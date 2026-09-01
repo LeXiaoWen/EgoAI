@@ -15,7 +15,6 @@ const testUtils = __openAICompatProxyTestUtils;
 test('refreshes EgoAI credentials only for HTTP 401', () => {
   expect(testUtils.shouldRefreshProxyToken(401, ProviderName.EgoaiServer)).toBe(true);
   expect(testUtils.shouldRefreshProxyToken(403, ProviderName.EgoaiServer)).toBe(false);
-  expect(testUtils.shouldRefreshProxyToken(403, ProviderName.Copilot)).toBe(true);
 });
 
 test('maps only transient EgoAI refresh failures to temporary service errors', () => {
@@ -26,10 +25,6 @@ test('maps only transient EgoAI refresh failures to temporary service errors', (
   expect(testUtils.isTemporaryEgoAIAuthRefreshFailure(
     ProviderName.EgoaiServer,
     { outcome: AuthRefreshOutcome.TerminalFailure },
-  )).toBe(false);
-  expect(testUtils.isTemporaryEgoAIAuthRefreshFailure(
-    ProviderName.Copilot,
-    { outcome: AuthRefreshOutcome.TransientFailure },
   )).toBe(false);
 });
 

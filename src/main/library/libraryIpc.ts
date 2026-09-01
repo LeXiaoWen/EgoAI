@@ -28,8 +28,6 @@ import { decodeLibraryLocalCursor, LibraryLocalStore } from './libraryLocalStore
 export interface LibraryIpcDependencies {
   localStore: LibraryLocalStore;
   indexService: LibraryIndexService;
-  getServerApiBaseUrl: () => string;
-  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
 const success = <T>(data: T): LibraryResult<T> => ({ success: true, data });
@@ -151,8 +149,6 @@ const normalizeCandidates = (value: unknown): LibraryArtifactCandidate[] => {
 export const registerLibraryIpcHandlers = ({
   localStore,
   indexService,
-  getServerApiBaseUrl,
-  fetchWithAuth,
 }: LibraryIpcDependencies): void => {
   ipcMain.handle(LibraryIpc.ListLocal, (_event, input: unknown) => {
     try {

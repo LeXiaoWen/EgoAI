@@ -45,14 +45,6 @@ interface QueuedFollowUpOperation {
   cancelled: boolean;
 }
 
-export const isQueuedSteerAccountCurrent = (
-  queuedSteer: Pick<CoworkPendingSteer, 'ownerAccountKey' | 'accountGeneration'>,
-  authState: Pick<RootState['auth'], 'ownerAccountKey' | 'accountGeneration'>,
-): boolean => (
-  queuedSteer.ownerAccountKey === authState.ownerAccountKey
-  && queuedSteer.accountGeneration === authState.accountGeneration
-);
-
 export class CoworkQueuedFollowUpCoordinator {
   private readonly inFlightBySessionId = new Map<string, QueuedFollowUpOperation>();
   private readonly startingQueuedTurnSessionIds = new Set<string>();
@@ -300,11 +292,7 @@ export class CoworkQueuedFollowUpCoordinator {
         );
         return false;
       }
-      if (
-        stillQueued.ownerAccountKey !== queuedSteer.ownerAccountKey
-        || stillQueued.accountGeneration !== queuedSteer.accountGeneration
-        || !this.isQueuedSteerCurrent(queuedSteer)
-      ) {
+      if (!this.isQueuedSteerCurrent(queuedSteer)) {
         this.removeQueuedSteerIfUnchanged(queuedSteer);
         return false;
       }
@@ -393,11 +381,8 @@ export class CoworkQueuedFollowUpCoordinator {
     return state.sessions.find(session => session.id === sessionId)?.status;
   }
 
-  private isQueuedSteerCurrent(queuedSteer: CoworkPendingSteer): boolean {
-    return isQueuedSteerAccountCurrent(
-      queuedSteer,
-      this.dependencies.getState().auth,
-    );
+  private isQueuedSteerCurrent(_queuedSteer: CoworkPendingSteer): boolean {
+    return true;
   }
 
   private removeQueuedSteerIfUnchanged(queuedSteer: CoworkPendingSteer): void {
@@ -405,11 +390,7 @@ export class CoworkQueuedFollowUpCoordinator {
       this.dependencies.getState().cowork.pendingSteers[queuedSteer.sessionId] ?? [],
       queuedSteer.id,
     );
-    if (
-      !current
-      || current.ownerAccountKey !== queuedSteer.ownerAccountKey
-      || current.accountGeneration !== queuedSteer.accountGeneration
-    ) {
+    if (!current) {
       return;
     }
     this.dependencies.dispatch(removePendingSteer({

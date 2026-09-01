@@ -5,9 +5,7 @@ import {
   buildOpenAIConnectionTestRequestBody,
   getOpenClawProviderIdForConfig,
   hasEquivalentProviderModelId,
-  hasProviderAuthConfigured,
   type ProviderConfig,
-  providerRequiresApiKey,
   shouldShowApiFormatSelector,
 } from './modelProviderUtils';
 
@@ -17,22 +15,6 @@ const providerConfig = (overrides: Partial<ProviderConfig> = {}): ProviderConfig
   baseUrl: 'https://api.example.com',
   models: [],
   ...overrides,
-});
-
-test('GitHub Copilot does not require a persisted API key', () => {
-  expect(providerRequiresApiKey(ProviderName.Copilot)).toBe(false);
-});
-
-test('GitHub Copilot OAuth auth is tracked by authType instead of apiKey', () => {
-  expect(hasProviderAuthConfigured(
-    ProviderName.Copilot,
-    providerConfig({ authType: ProviderAuthType.OAuth }),
-  )).toBe(true);
-
-  expect(hasProviderAuthConfigured(
-    ProviderName.Copilot,
-    providerConfig({ apiKey: 'legacy-short-token' }),
-  )).toBe(false);
 });
 
 test('MiniMax OAuth resolves to the OpenClaw portal provider', () => {

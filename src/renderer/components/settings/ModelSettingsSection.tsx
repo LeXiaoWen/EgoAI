@@ -1,11 +1,9 @@
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
-import { ArrowTopRightOnSquareIcon, CheckCircleIcon, ExclamationCircleIcon, KeyIcon, MagnifyingGlassIcon, ShieldCheckIcon, SignalIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, SignalIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 
 import {
   normalizeModelIdForComparison,
-  ProviderAuthType,
-  ProviderName,
   ProviderRegistry,
 } from '../../../shared/providers';
 import { defaultConfig, getCustomProviderDefaultName, getProviderDisplayName, isCustomProvider } from '../../config';
@@ -13,7 +11,6 @@ import { getProviderIcon } from '../../providers/uiRegistry';
 import { i18nService } from '../../services/i18n';
 import EditIcon from '../icons/EditIcon';
 import PlusCircleIcon from '../icons/PlusCircleIcon';
-import { GitHubCopilotIcon } from '../icons/providers';
 import TrashIcon from '../icons/TrashIcon';
 import {
   CUSTOM_PROVIDER_KEYS,
@@ -83,28 +80,6 @@ function formatContextWindow(value: number): string {
   return value.toLocaleString();
 }
 
-type MiniMaxOAuthPhase =
-  | { kind: 'idle' }
-  | { kind: 'requesting_code' }
-  | { kind: 'pending'; userCode: string; verificationUri: string }
-  | { kind: 'success' }
-  | { kind: 'error'; message: string };
-
-type OpenAIOAuthPhase =
-  | { kind: 'idle' }
-  | { kind: 'pending' }
-  | { kind: 'success'; email?: string }
-  | { kind: 'error'; message: string };
-
-type XaiOAuthPhase =
-  | { kind: 'idle' }
-  | { kind: 'pending' }
-  | { kind: 'device_code'; userCode: string; verificationUri: string }
-  | { kind: 'success'; email?: string }
-  | { kind: 'error'; message: string };
-
-type MiniMaxRegion = 'cn' | 'global';
-
 type ProviderConnectionTestResult = {
   success: boolean;
   message: string;
@@ -119,25 +94,7 @@ export interface ModelSettingsSectionProps {
   setShowApiKey: (v: boolean) => void;
   isImportingProviders: boolean;
   isExportingProviders: boolean;
-  minimaxIsOAuthMode: boolean;
-  openaiIsOAuthMode: boolean;
   isBaseUrlLocked: boolean;
-  minimaxOAuthPhase: MiniMaxOAuthPhase;
-  minimaxOAuthRegion: MiniMaxRegion;
-  setMinimaxOAuthRegion: (v: MiniMaxRegion) => void;
-  setMinimaxOAuthPhase: (v: MiniMaxOAuthPhase) => void;
-  openaiOAuthPhase: OpenAIOAuthPhase;
-  setOpenaiOAuthPhase: (v: OpenAIOAuthPhase) => void;
-  openaiOAuthStatus: { loggedIn: false } | { loggedIn: true; email?: string } | null;
-  xaiIsOAuthMode: boolean;
-  xaiOAuthPhase: XaiOAuthPhase;
-  setXaiOAuthPhase: (v: XaiOAuthPhase) => void;
-  xaiOAuthStatus: { loggedIn: false } | { loggedIn: true; email?: string } | null;
-  copilotAuthStatus: 'idle' | 'requesting' | 'awaiting_user' | 'polling' | 'authenticated' | 'error';
-  copilotUserCode: string;
-  copilotVerificationUri: string;
-  copilotGithubUser: string;
-  copilotError: string | null;
   isTesting: boolean;
   testResult: ProviderConnectionTestResult | null;
   isTestResultModalOpen: boolean;
@@ -152,19 +109,6 @@ export interface ModelSettingsSectionProps {
   handleAddCustomProvider: () => void;
   handleDeleteCustomProvider: (key: ProviderType) => void;
   handleProviderConfigChange: (provider: ProviderType, field: string, value: string) => void;
-  setProviders: React.Dispatch<React.SetStateAction<ProvidersConfig>>;
-  handleMiniMaxDeviceLogin: (region: MiniMaxRegion) => void;
-  handleCancelMiniMaxLogin: () => void;
-  handleMiniMaxOAuthLogout: () => void;
-  handleOpenAIOAuthLogin: () => void;
-  handleCancelOpenAIOAuthLogin: () => void;
-  handleOpenAIOAuthLogout: () => void;
-  handleXaiOAuthLogin: () => void;
-  handleCancelXaiOAuthLogin: () => void;
-  handleXaiOAuthLogout: () => void;
-  handleCopilotSignIn: () => void;
-  handleCopilotSignOut: () => void;
-  handleCopilotCancelAuth: () => void;
   handleTestConnection: () => void;
   handleAddModel: () => void;
   handleEditModel: (
@@ -598,32 +542,16 @@ export const DeleteProviderConfirmDialog: React.FC<DeleteProviderConfirmDialogPr
 const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
   providers, activeProvider, visibleProviders,
   showApiKey, setShowApiKey,
-  isImportingProviders, isExportingProviders,
-  minimaxIsOAuthMode, openaiIsOAuthMode, isBaseUrlLocked,
-  minimaxOAuthPhase, minimaxOAuthRegion, setMinimaxOAuthRegion, setMinimaxOAuthPhase,
-  openaiOAuthPhase, setOpenaiOAuthPhase, openaiOAuthStatus,
-  xaiIsOAuthMode, xaiOAuthPhase, setXaiOAuthPhase, xaiOAuthStatus,
-  copilotAuthStatus, copilotUserCode, copilotVerificationUri, copilotGithubUser, copilotError,
+  isImportingProviders, isExportingProviders, isBaseUrlLocked,
   isTesting, testResult, isTestResultModalOpen, setIsTestResultModalOpen,
   importInputRef,
   handleImportProvidersClick, handleExportProviders, handleImportProviders,
   handleProviderChange, toggleProviderEnabled,
   handleAddCustomProvider, handleDeleteCustomProvider,
-  handleProviderConfigChange, setProviders,
-  handleMiniMaxDeviceLogin, handleCancelMiniMaxLogin, handleMiniMaxOAuthLogout,
-  handleOpenAIOAuthLogin, handleCancelOpenAIOAuthLogin, handleOpenAIOAuthLogout,
-  handleXaiOAuthLogin, handleCancelXaiOAuthLogin, handleXaiOAuthLogout,
-  handleCopilotSignIn, handleCopilotSignOut, handleCopilotCancelAuth,
+  handleProviderConfigChange,
   handleTestConnection,
   handleAddModel, handleEditModel, handleDeleteModel,
 }) => {
-  const copilotProvider = providers[ProviderName.Copilot];
-  const copilotAuthInProgress = copilotAuthStatus === 'requesting'
-    || copilotAuthStatus === 'awaiting_user'
-    || copilotAuthStatus === 'polling';
-  const copilotSignedIn = copilotAuthStatus === 'authenticated'
-    || copilotProvider?.authType === ProviderAuthType.OAuth;
-
   // Guides users who click a toggle that cannot be enabled yet: highlights the
   // missing auth requirement (API key input / login) instead of ignoring the click.
   const [authAttention, setAuthAttention] = React.useState<{ provider: ProviderType; nonce: number } | null>(null);
@@ -644,12 +572,6 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
     : providerEntries;
   const enabledProviderCount = providerEntries.filter(({ providerKey, config }) =>
     config.enabled && hasProviderAuthConfigured(providerKey, config)).length;
-
-  const getProviderAuthRequirementHint = (providerKey: ProviderType, config: ProviderConfig): string => {
-    const requiresLogin = providerKey === ProviderName.Copilot
-      || (providerKey === ProviderName.Minimax && config.authType !== ProviderAuthType.ApiKey);
-    return requiresLogin ? i18nService.t('enableRequiresLogin') : i18nService.t('enableRequiresApiKey');
-  };
 
   const requestProviderAuthAttention = (providerKey: ProviderType) => {
     if (activeProvider !== providerKey) {
@@ -676,7 +598,7 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
       className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-red-500 dark:text-red-400 animate-fade-in-down"
     >
       <ExclamationCircleIcon className="h-3.5 w-3.5 shrink-0" />
-      {getProviderAuthRequirementHint(activeProvider, providers[activeProvider])}
+      {i18nService.t('enableRequiresApiKey')}
     </p>
   ) : null;
 
@@ -796,7 +718,7 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                       )}
                       <div
                         key={attentionNonce === null ? undefined : `provider-toggle-attention-${attentionNonce}`}
-                        title={!canToggleProvider ? getProviderAuthRequirementHint(providerKey, config) : undefined}
+                        title={!canToggleProvider ? i18nService.t('enableRequiresApiKey') : undefined}
                         className={`w-7 h-4 rounded-full flex items-center transition-colors ${
                           effectiveEnabled ? 'bg-primary' : 'bg-gray-400 dark:bg-gray-600'
                         } ${
@@ -874,609 +796,6 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                 </div>
               </div>
 
-              {/* MiniMax OAuth auth section */}
-              {activeProvider === 'minimax' && (
-                <div className="space-y-3">
-                  {/* Auth type radio cards */}
-                  <div>
-                    <p className="text-xs font-medium text-foreground mb-2">
-                      {i18nService.t('minimaxAuthMethodLabel')}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProviders(prev => ({
-                            ...prev,
-                            minimax: {
-                              ...prev.minimax,
-                              authType: 'apikey',
-                              enabled: prev.minimax.enabled && prev.minimax.apiKey.trim().length > 0,
-                            },
-                          }));
-                          setMinimaxOAuthPhase({ kind: 'idle' });
-                        }}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${!minimaxIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <KeyIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {!minimaxIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('minimaxOAuthTabApiKey')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('minimaxAuthApiKeyDesc')}</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProviders(prev => ({
-                          ...prev,
-                          minimax: {
-                            ...prev.minimax,
-                            authType: 'oauth',
-                            enabled: prev.minimax.enabled && (prev.minimax.oauthAccessToken?.trim().length ?? 0) > 0,
-                          },
-                        }))}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${minimaxIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <ShieldCheckIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {minimaxIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('minimaxOAuthTabOAuth')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('minimaxAuthOAuthDesc')}</p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* API Key mode */}
-                  {!minimaxIsOAuthMode && (
-                    <div className="min-h-[68px]">
-                      <div className="flex items-center justify-between mb-1">
-                        <label htmlFor="minimax-apiKey" className="block text-xs font-medium dark:text-claude-darkText text-claude-text">
-                          {i18nService.t('apiKey')}<span className="text-red-500 dark:text-red-400 ml-0.5">*</span>
-                        </label>
-                        {ProviderRegistry.get('minimax')?.apiKeyUrl && (
-                          <button
-                            type="button"
-                            onClick={() => void window.electron.shell.openExternal(ProviderRegistry.get('minimax')!.apiKeyUrl!)}
-                            className="text-[11px] text-claude-accent hover:underline transition-colors"
-                          >
-                            {i18nService.t('getApiKey')} →
-                          </button>
-                        )}
-                      </div>
-                      <div className={`relative ${authAttentionRingClass}`}>
-                      <input
-                        type={showApiKey ? 'text' : 'password'}
-                        id="minimax-apiKey"
-                        value={providers.minimax.apiKey}
-                        onChange={(e) => handleProviderConfigChange('minimax', 'apiKey', e.target.value)}
-                        className="block w-full rounded-xl bg-surface-inset border-border border focus:border-primary focus:ring-1 focus:ring-primary/30 text-foreground px-3 py-2 pr-16 text-xs"
-                        placeholder={i18nService.t('apiKeyPlaceholder')}
-                      />
-                      <div className="absolute right-2 inset-y-0 flex items-center gap-1">
-                        {providers.minimax.apiKey && (
-                          <button
-                            type="button"
-                            onClick={() => handleProviderConfigChange('minimax', 'apiKey', '')}
-                            className="p-0.5 rounded text-secondary hover:text-primary transition-colors"
-                            title={i18nService.t('clear') || 'Clear'}
-                          >
-                            <XCircleIconSolid className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey(!showApiKey)}
-                          className="p-0.5 rounded text-secondary hover:text-primary transition-colors"
-                          title={showApiKey ? (i18nService.t('hide') || 'Hide') : (i18nService.t('show') || 'Show')}
-                        >
-                          {showApiKey ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
-                        </button>
-                      </div>
-                      </div>
-                      {authAttentionHint}
-                    </div>
-                  )}
-
-                  {/* OAuth mode */}
-                  {minimaxIsOAuthMode && (
-                    <div className="space-y-2 min-h-[68px]">
-                      {/* Already logged in */}
-                      {minimaxOAuthPhase.kind === 'idle' && providers.minimax.oauthAccessToken && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 space-y-2">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('minimaxOAuthLoggedIn')}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleMiniMaxDeviceLogin(minimaxOAuthRegion)}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('minimaxOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleMiniMaxOAuthLogout}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
-                            >
-                              {i18nService.t('minimaxOAuthLogout')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Not logged in yet — show region selector + login button */}
-                      {minimaxOAuthPhase.kind === 'idle' && !providers.minimax.oauthAccessToken && (
-                        <div className="space-y-2">
-                          {authAttentionHint}
-                          <div>
-                            <label className="block text-xs font-medium text-foreground mb-1">
-                              {i18nService.t('minimaxOAuthRegionLabel')}
-                            </label>
-                            <div className="flex rounded-xl overflow-hidden border border-border">
-                              <button
-                                type="button"
-                                onClick={() => setMinimaxOAuthRegion('cn')}
-                                className={`flex-1 py-1.5 text-xs font-medium transition-colors ${minimaxOAuthRegion === 'cn' ? 'bg-primary text-white' : 'text-secondary hover:bg-surface-raised'}`}
-                              >
-                                {i18nService.t('minimaxOAuthRegionCN')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setMinimaxOAuthRegion('global')}
-                                className={`flex-1 py-1.5 text-xs font-medium transition-colors ${minimaxOAuthRegion === 'global' ? 'bg-primary text-white' : 'text-secondary hover:bg-surface-raised'}`}
-                              >
-                                {i18nService.t('minimaxOAuthRegionGlobal')}
-                              </button>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleMiniMaxDeviceLogin(minimaxOAuthRegion)}
-                            className="w-full py-2 text-xs font-medium rounded-xl bg-primary text-white hover:bg-primary-hover transition-colors"
-                          >
-                            {i18nService.t('minimaxOAuthLogin')}
-                          </button>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('minimaxOAuthHint')}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Requesting code */}
-                      {minimaxOAuthPhase.kind === 'requesting_code' && (
-                        <div className="p-3 rounded-xl bg-surface-inset border border-border">
-                          <p className="text-xs text-secondary">
-                            {i18nService.t('minimaxOAuthLoggingIn')}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Pending — show user code */}
-                      {minimaxOAuthPhase.kind === 'pending' && (
-                        <div className="p-3 rounded-xl bg-surface-inset border border-border space-y-2">
-                          <p className="text-xs text-foreground font-medium">
-                            {i18nService.t('minimaxOAuthOpenBrowserHint')}
-                          </p>
-                          <div>
-                            <span className="text-[11px] text-secondary">
-                              {i18nService.t('minimaxOAuthUserCode')}:&nbsp;
-                            </span>
-                            <code className="text-xs font-mono text-primary">
-                              {minimaxOAuthPhase.userCode}
-                            </code>
-                          </div>
-                          <a
-                            href={minimaxOAuthPhase.verificationUri}
-                            onClick={(e) => { e.preventDefault(); void window.electron.shell.openExternal(minimaxOAuthPhase.verificationUri); }}
-                            className="block text-[11px] text-primary underline truncate"
-                          >
-                            {minimaxOAuthPhase.verificationUri}
-                          </a>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('minimaxOAuthStatusPending')}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={handleCancelMiniMaxLogin}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                          >
-                            {i18nService.t('minimaxOAuthCancel')}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Success */}
-                      {minimaxOAuthPhase.kind === 'success' && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('minimaxOAuthStatusSuccess')}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Error */}
-                      {minimaxOAuthPhase.kind === 'error' && (
-                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-2">
-                          <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                            {i18nService.t('minimaxOAuthStatusError')}
-                          </p>
-                          <p className="text-[11px] text-red-600/80 dark:text-red-400/80 break-words">
-                            {minimaxOAuthPhase.message}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleMiniMaxDeviceLogin(minimaxOAuthRegion)}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
-                            >
-                              {i18nService.t('minimaxOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setMinimaxOAuthPhase({ kind: 'idle' })}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('minimaxOAuthCancel')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* OpenAI ChatGPT (Codex) OAuth auth section */}
-              {activeProvider === 'openai' && (
-                <div className="space-y-3">
-                  {/* Auth type radio cards */}
-                  <div>
-                    <p className="text-xs font-medium text-foreground mb-2">
-                      {i18nService.t('openaiAuthMethodLabel')}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProviders(prev => ({
-                            ...prev,
-                            openai: {
-                              ...prev.openai,
-                              authType: 'apikey',
-                            },
-                          }));
-                          setOpenaiOAuthPhase({ kind: 'idle' });
-                        }}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${!openaiIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <KeyIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {!openaiIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('openaiOAuthTabApiKey')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('openaiAuthApiKeyDesc')}</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProviders(prev => ({
-                          ...prev,
-                          openai: {
-                            ...prev.openai,
-                            authType: 'oauth',
-                          },
-                        }))}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${openaiIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <ShieldCheckIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {openaiIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('openaiOAuthTabOAuth')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('openaiAuthOAuthDesc')}</p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* OAuth mode UI */}
-                  {openaiIsOAuthMode && (
-                    <div className="space-y-2 min-h-[68px]">
-                      {/* Idle + already logged in */}
-                      {openaiOAuthPhase.kind === 'idle' && openaiOAuthStatus?.loggedIn && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 space-y-2">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('openaiOAuthLoggedIn')}
-                            {openaiOAuthStatus.email ? ` (${openaiOAuthStatus.email})` : ''}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={handleOpenAIOAuthLogin}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('openaiOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { void handleOpenAIOAuthLogout(); }}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
-                            >
-                              {i18nService.t('openaiOAuthLogout')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Idle + not logged in — show login CTA */}
-                      {openaiOAuthPhase.kind === 'idle' && openaiOAuthStatus && !openaiOAuthStatus.loggedIn && (
-                        <div className="space-y-2">
-                          <button
-                            type="button"
-                            onClick={handleOpenAIOAuthLogin}
-                            className="w-full py-2 text-xs font-medium rounded-xl bg-primary text-white hover:bg-primary-hover transition-colors"
-                          >
-                            {i18nService.t('openaiOAuthLogin')}
-                          </button>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('openaiOAuthHint')}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Pending — browser opened, waiting for callback */}
-                      {openaiOAuthPhase.kind === 'pending' && (
-                        <div className="p-3 rounded-xl bg-surface-inset border border-border space-y-2">
-                          <p className="text-xs text-foreground font-medium">
-                            {i18nService.t('openaiOAuthOpenBrowserHint')}
-                          </p>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('openaiOAuthStatusPending')}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => { void handleCancelOpenAIOAuthLogin(); }}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                          >
-                            {i18nService.t('openaiOAuthCancel')}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Success */}
-                      {openaiOAuthPhase.kind === 'success' && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('openaiOAuthStatusSuccess')}
-                            {openaiOAuthPhase.email ? ` (${openaiOAuthPhase.email})` : ''}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Error */}
-                      {openaiOAuthPhase.kind === 'error' && (
-                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-2">
-                          <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                            {i18nService.t('openaiOAuthStatusError')}
-                          </p>
-                          <p className="text-[11px] text-red-600/80 dark:text-red-400/80 break-words">
-                            {openaiOAuthPhase.message}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={handleOpenAIOAuthLogin}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
-                            >
-                              {i18nService.t('openaiOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setOpenaiOAuthPhase({ kind: 'idle' })}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('openaiOAuthCancel')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* xAI (Grok) OAuth auth section */}
-              {activeProvider === 'xai' && (
-                <div className="space-y-3">
-                  {/* Auth type radio cards */}
-                  <div>
-                    <p className="text-xs font-medium text-foreground mb-2">
-                      {i18nService.t('xaiAuthMethodLabel')}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProviders(prev => ({
-                            ...prev,
-                            xai: {
-                              ...prev.xai,
-                              authType: 'apikey',
-                            },
-                          }));
-                          setXaiOAuthPhase({ kind: 'idle' });
-                        }}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${!xaiIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <KeyIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {!xaiIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('xaiOAuthTabApiKey')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('xaiAuthApiKeyDesc')}</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProviders(prev => ({
-                          ...prev,
-                          xai: {
-                            ...prev.xai,
-                            authType: 'oauth',
-                          },
-                        }))}
-                        className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${xaiIsOAuthMode ? 'border-primary bg-primary/5' : 'border-border opacity-60 hover:opacity-80'}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <ShieldCheckIcon className="h-4 w-4 text-foreground mt-0.5 shrink-0" />
-                          {xaiIsOAuthMode && <CheckCircleIcon className="h-4 w-4 text-primary shrink-0" />}
-                        </div>
-                        <p className="text-xs font-semibold text-foreground mt-1.5">{i18nService.t('xaiOAuthTabOAuth')}</p>
-                        <p className="text-[11px] text-secondary mt-0.5 leading-relaxed">{i18nService.t('xaiAuthOAuthDesc')}</p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* OAuth mode UI */}
-                  {xaiIsOAuthMode && (
-                    <div className="space-y-2 min-h-[68px]">
-                      {/* Idle + already logged in */}
-                      {xaiOAuthPhase.kind === 'idle' && xaiOAuthStatus?.loggedIn && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 space-y-2">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('xaiOAuthLoggedIn')}
-                            {xaiOAuthStatus.email ? ` (${xaiOAuthStatus.email})` : ''}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={handleXaiOAuthLogin}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('xaiOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { void handleXaiOAuthLogout(); }}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
-                            >
-                              {i18nService.t('xaiOAuthLogout')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Idle + not logged in — show login CTA */}
-                      {xaiOAuthPhase.kind === 'idle' && xaiOAuthStatus && !xaiOAuthStatus.loggedIn && (
-                        <div className="space-y-2">
-                          <button
-                            type="button"
-                            onClick={handleXaiOAuthLogin}
-                            className="w-full py-2 text-xs font-medium rounded-xl bg-primary text-white hover:bg-primary-hover transition-colors"
-                          >
-                            {i18nService.t('xaiOAuthLogin')}
-                          </button>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('xaiOAuthHint')}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Pending — browser opened, waiting for callback */}
-                      {xaiOAuthPhase.kind === 'pending' && (
-                        <div className="p-3 rounded-xl bg-surface-inset border border-border space-y-2">
-                          <p className="text-xs text-foreground font-medium">
-                            {i18nService.t('xaiOAuthOpenBrowserHint')}
-                          </p>
-                          <p className="text-[11px] text-secondary">
-                            {i18nService.t('xaiOAuthStatusPending')}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => { void handleCancelXaiOAuthLogin(); }}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                          >
-                            {i18nService.t('xaiOAuthCancel')}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Device code fallback — show user code + verification link */}
-                      {xaiOAuthPhase.kind === 'device_code' && (
-                        <div className="p-3 rounded-xl bg-surface-inset border border-border space-y-2">
-                          <p className="text-xs text-foreground font-medium">
-                            {i18nService.t('xaiOAuthDeviceCodeHint')}
-                          </p>
-                          <div>
-                            <span className="text-[11px] text-secondary">
-                              {i18nService.t('xaiOAuthUserCode')}:&nbsp;
-                            </span>
-                            <code className="text-xs font-mono text-primary">
-                              {xaiOAuthPhase.userCode}
-                            </code>
-                          </div>
-                          <a
-                            href={xaiOAuthPhase.verificationUri}
-                            onClick={(e) => { e.preventDefault(); void window.electron.shell.openExternal(xaiOAuthPhase.verificationUri); }}
-                            className="block text-[11px] text-primary underline truncate"
-                          >
-                            {xaiOAuthPhase.verificationUri}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => { void handleCancelXaiOAuthLogin(); }}
-                            className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                          >
-                            {i18nService.t('xaiOAuthCancel')}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Success */}
-                      {xaiOAuthPhase.kind === 'success' && (
-                        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            {i18nService.t('xaiOAuthStatusSuccess')}
-                            {xaiOAuthPhase.email ? ` (${xaiOAuthPhase.email})` : ''}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Error */}
-                      {xaiOAuthPhase.kind === 'error' && (
-                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-2">
-                          <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                            {i18nService.t('xaiOAuthStatusError')}
-                          </p>
-                          <p className="text-[11px] text-red-600/80 dark:text-red-400/80 break-words">
-                            {xaiOAuthPhase.message}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={handleXaiOAuthLogin}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
-                            >
-                              {i18nService.t('xaiOAuthRelogin')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setXaiOAuthPhase({ kind: 'idle' })}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-border text-foreground hover:bg-surface-raised transition-colors"
-                            >
-                              {i18nService.t('xaiOAuthCancel')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Shared consent-screen note */}
-                      <p className="text-[11px] text-secondary leading-relaxed">
-                        {i18nService.t('xaiOAuthConsentNote')}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Custom provider display name */}
               {isCustomProvider(activeProvider) && (
@@ -1495,8 +814,8 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                 </div>
               )}
 
-              {/* Standard API key section for non-MiniMax providers */}
-              {providerRequiresApiKey(activeProvider) && activeProvider !== 'minimax' && !(activeProvider === 'openai' && openaiIsOAuthMode) && !(activeProvider === 'xai' && xaiIsOAuthMode) && (
+              {/* Standard API key section */}
+              {providerRequiresApiKey(activeProvider) && (
                 <div>
                   {/* Standard API Key input for non-Qwen providers */}
                   {activeProvider !== 'qwen' && (
@@ -1602,109 +921,6 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                 </div>
               )}
 
-              {activeProvider === ProviderName.Copilot && (
-                <div>
-                  <label className="block text-xs font-medium dark:text-claude-darkText text-claude-text mb-2">
-                    {i18nService.t('githubCopilotAuth')}
-                  </label>
-
-                  {(copilotAuthStatus === 'idle' || copilotAuthStatus === 'error') && !copilotSignedIn && (
-                    <div className="space-y-2">
-                      {authAttentionHint}
-                      <button
-                        type="button"
-                        onClick={handleCopilotSignIn}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-claude-accent text-white text-xs font-medium hover:bg-claude-accent/90 transition-colors"
-                      >
-                        <GitHubCopilotIcon className="w-4 h-4" />
-                        {i18nService.t('githubCopilotSignIn')}
-                      </button>
-                      {copilotError && (
-                        <p className="text-xs text-red-500 dark:text-red-400">{copilotError}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {copilotAuthStatus === 'requesting' && (
-                    <div className="flex items-center gap-2 text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      {i18nService.t('githubCopilotRequesting')}
-                    </div>
-                  )}
-
-                  {(copilotAuthStatus === 'awaiting_user' || copilotAuthStatus === 'polling') && (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-xl bg-claude-surfaceInset dark:bg-claude-darkSurfaceInset border border-claude-border dark:border-claude-darkBorder">
-                        <p className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary mb-2">
-                          {i18nService.t('githubCopilotEnterCode')}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <code className="text-lg font-mono font-bold tracking-widest dark:text-claude-darkText text-claude-text">
-                            {copilotUserCode}
-                          </code>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(copilotUserCode);
-                            }}
-                            className="px-2 py-0.5 rounded text-[10px] text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent border border-claude-border dark:border-claude-darkBorder transition-colors"
-                          >
-                            {i18nService.t('copy') || 'Copy'}
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => window.electron.shell.openExternal(copilotVerificationUri)}
-                          className="mt-2 text-xs text-claude-accent hover:underline"
-                        >
-                          {copilotVerificationUri}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          {i18nService.t('githubCopilotWaiting')}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleCopilotCancelAuth}
-                          className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 transition-colors"
-                        >
-                          {i18nService.t('cancel')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {copilotSignedIn && !copilotAuthInProgress && (
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-claude-surfaceInset dark:bg-claude-darkSurfaceInset border border-claude-border dark:border-claude-darkBorder">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-xs dark:text-claude-darkText text-claude-text">
-                          {copilotGithubUser
-                            ? `${i18nService.t('githubCopilotConnected')} @${copilotGithubUser}`
-                            : i18nService.t('githubCopilotConnected')}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopilotSignOut}
-                        className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 transition-colors"
-                      >
-                        {i18nService.t('githubCopilotSignOut')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!(activeProvider === 'minimax' && minimaxIsOAuthMode) && (
               <div>
                 <label htmlFor={`${activeProvider}-baseUrl`} className="block text-xs font-medium text-foreground mb-1">
                   {i18nService.t('baseUrl')}
@@ -1820,13 +1036,12 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                   </div>
                 )}
               </div>
-              )}
 
               {/* API 格式选择器 */}
               {shouldShowApiFormatSelector(
                 activeProvider,
                 providers[activeProvider].apiFormat,
-              ) && !(activeProvider === 'minimax' && minimaxIsOAuthMode) && (
+              ) && (
                 <div>
                   <label htmlFor={`${activeProvider}-apiFormat`} className="block text-xs font-medium text-foreground mb-1">
                     {i18nService.t('apiFormat')}
@@ -2034,7 +1249,6 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
               )}
 
               {/* 测试连接按钮 */}
-              {!(activeProvider === 'minimax' && minimaxIsOAuthMode) && (
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
@@ -2066,7 +1280,6 @@ const ModelSettingsSection: React.FC<ModelSettingsSectionProps> = ({
                   </button>
                 )}
               </div>
-              )}
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">

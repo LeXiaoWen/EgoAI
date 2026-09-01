@@ -203,9 +203,6 @@ const providerSecretsOnly = (providers: unknown): unknown => {
 
   const secrets: JsonLikeObject = {};
   for (const [providerName, provider] of Object.entries(providers)) {
-    if (providerName === ProviderName.Copilot) {
-      continue;
-    }
     if (!isPlainObject(provider)) {
       continue;
     }

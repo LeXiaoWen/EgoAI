@@ -30,26 +30,10 @@ import { buildSessionTitleFromInput } from '../common/sessionTitle';
 import {
   AgentId,
 } from '../shared/agent/constants';
-import {
-  LogReporterAction,
-  LogReporterSource,
-  LogReporterStoreKey,
-} from '../shared/analytics/constants';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
-import { createAccountOwnerKey } from '../shared/auth/accountOwner';
-import {
-  AuthIpcChannel,
-  type AuthLifecycleEvent,
-  AuthLifecycleEventType,
-  AuthRefreshOutcome,
-  AuthRefreshReason,
-  type AuthSessionChangedEvent,
-  AuthSessionChangeReason,
-  AuthSessionStatus,
-} from '../shared/auth/constants';
 import {
   type BrowserDiagnosticResultStep,
   BrowserDiagnosticStatus,
@@ -146,13 +130,11 @@ import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from 
 import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
-import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
 import { registerAgentHandlers } from './ipcHandlers/agents';
-import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { ensureDshEngineReady, registerDshHandlers } from './ipcHandlers/dsh/handlers';
 import { registerKitHandlers } from './ipcHandlers/kits';
@@ -172,42 +154,16 @@ import {
   type PermissionResult,
 } from './libs/agentEngine';
 import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
-import { AuthCallbackRouter } from './libs/authCallbackRouter';
-import {
-  appendCallbackReturnTo,
-  appendLoginParams,
-  startAuthLocalCallback,
-} from './libs/authLocalCallbackServer';
-import {
-  AuthSessionManager,
-  resolveAuthSessionStatusFromError,
-} from './libs/authSessionManager';
 import type { BrowserAnnotationAssetIdentity, SaveBrowserAnnotationAssetInput } from './libs/browserAnnotationAssetStore';
 import { BrowserAnnotationAssetStore } from './libs/browserAnnotationAssetStore';
 import {
-  clearServerModelMetadata,
-  evaluateServerModelRunGate,
   getAllServerModelMetadata,
   getCurrentApiConfig,
-  getServerModelMetadata,
-  isKnownPackageKimiK3ModelId,
   resolveAllEnabledProviderConfigs,
   resolveCurrentApiConfig,
   resolveRawApiConfig,
-  type ServerModelMetadataInput,
-  ServerModelRunGateReason,
-  setAuthTokensGetter,
-  setServerBaseUrlGetter,
   setStoreGetter,
-  updateServerModelMetadata,
 } from './libs/claudeSettings';
-import { appendClientBannerVersion } from './libs/clientBannerRequest';
-import {
-  clearCopilotTokenState,
-  initCopilotTokenManager,
-  refreshCopilotTokenNow,
-  setCopilotTokenState,
-} from './libs/copilotTokenManager';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { getCoworkLogPath } from './libs/coworkLogger';
 import {
@@ -239,8 +195,6 @@ import {
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
 import {
   getKitStoreUrl,
-  getPortalTasksUrl,
-  getServerApiBaseUrl,
   getSkillStoreUrl,
   refreshEndpointsTestMode,
 } from './libs/endpoints';
@@ -256,7 +210,6 @@ import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
-import { MainLogReporter } from './libs/mainLogReporter';
 import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   migrateAgentModelRefs,
@@ -313,20 +266,11 @@ import {
   OpenClawPluginInstallMigrationStatus,
 } from './libs/openclawPluginInstallMigration';
 import { collectReferencedEnvVarNames, pickReferencedSecretEnvVars } from './libs/openclawSecretEnv';
-import {
-  getOpenClawTokenProxyPort,
-  startOpenClawTokenProxy,
-  stopOpenClawTokenProxy,
-} from './libs/openclawTokenProxy';
 import { migrateMainAgentWorkspace } from './libs/openclawWorkspaceMigration';
 import { ensurePythonRuntimeReady } from './libs/pythonRuntime';
 import { isAnalyticsEndpointUrl, sanitizeUrlForLog, serializeForLog } from './libs/sanitizeForLog';
 import { SqliteBackupTrigger } from './libs/sqliteBackup/constants';
 import { SqliteBackupManager } from './libs/sqliteBackup/sqliteBackupManager';
-import {
-  buildServerModelCapabilityHeaders,
-  runStartupCacheWarmup,
-} from './libs/startupCacheWarmup';
 import {
   applySystemProxyEnv,
   resolveSystemProxyUrlForTargets,
@@ -335,31 +279,12 @@ import {
 } from './libs/systemProxy';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
-import {
-  type AccountBoundValue,
-  type AuthExchangeIntentSnapshot,
-  type AuthStateSnapshot,
-  bindAccountValue,
-  canAccessTrackedMediaTask,
-  clearMediaTaskOwnerAliasesForOwner,
-  createAccountScopedFetch,
-  isAuthExchangeIntentCurrent,
-  isAuthStateSnapshotCurrent,
-  isMediaAccountScopeCurrent,
-  isMediaAccountScopeSnapshotCurrent,
-  type MediaAccountScope,
-  rebindMediaAccountScope,
-  rememberMediaTaskOwnerAliases,
-  resolveAccountBoundValue,
-  shouldRemoveMediaTaskAfterPoll,
-} from './mediaAccountIsolation';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 import {
   loadOpenClawSessionPolicyConfig,
   saveOpenClawSessionPolicyConfig,
 } from './openclawSessionPolicy/store';
-import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { isHiddenUserPluginId } from './plugins/pluginManager';
 import { SkillManager } from './skills/skillManager';
 import { getSkillServiceManager } from './skills/skillServices';
@@ -1116,14 +1041,11 @@ let sqliteBackupManager: SqliteBackupManager | null = null;
 let openClawEngineManager: OpenClawEngineManager | null = null;
 let openClawConfigSync: OpenClawConfigSync | null = null;
 let openClawBootstrapPromise: Promise<OpenClawEngineStatus> | null = null;
-let cachedSubscriptionStatus: string = AuthSubscriptionStatus.Free;
-let cachedMediaGenerationEntitled = false;
 let openClawStatusForwarderBound = false;
 let coworkRuntimeForwarderBound = false;
 let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
-let mainLogReporter: MainLogReporter | null = null;
 let libraryIndexService: LibraryIndexService | null = null;
 
 function setPreventSleepBlockerEnabled(enabled: boolean): void {
@@ -1192,21 +1114,6 @@ const getAppUpdateCoordinator = (): AppUpdateCoordinator => {
   return appUpdateCoordinator;
 };
 
-const getMainLogReporter = (): MainLogReporter => {
-  if (!mainLogReporter) {
-    mainLogReporter = new MainLogReporter({
-      appVersion: app.getVersion(),
-      fetch: async (url, signal) => {
-        const response = await session.defaultSession.fetch(url, { method: 'GET', signal });
-        const result = { ok: response.ok, status: response.status };
-        await response.body?.cancel();
-        return result;
-      },
-      store: getStore(),
-    });
-  }
-  return mainLogReporter;
-};
 
 const forwardOpenClawStatus = (status: OpenClawEngineStatus): void => {
   const windows = BrowserWindow.getAllWindows();
@@ -1404,24 +1311,6 @@ const isEgoaiServerModelRef = (modelRef: string): boolean => {
   return getAllServerModelMetadata().some(model => model.modelId === normalized);
 };
 
-const shouldRefreshServerQuotaForSession = (sessionId: string): boolean => {
-  const session = getCoworkStore().getSession(sessionId);
-  const sessionModelRef = session?.modelOverride?.trim();
-  if (sessionModelRef) {
-    return isEgoaiServerModelRef(sessionModelRef);
-  }
-
-  const agentModelRef = session?.agentId
-    ? getAgentManager().getAgent(session.agentId)?.model?.trim()
-    : '';
-  if (agentModelRef) {
-    return isEgoaiServerModelRef(agentModelRef);
-  }
-
-  const apiConfig = resolveCurrentApiConfig();
-  return apiConfig.providerMetadata?.providerName === ProviderName.EgoaiServer;
-};
-
 const resolveCoworkAgentEngine = (): CoworkAgentEngine => {
   return 'openclaw';
 };
@@ -1452,7 +1341,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
           .listUserPlugins()
           .filter(p => !isHiddenUserPluginId(p.pluginId))
           .map(p => ({ pluginId: p.pluginId, enabled: p.enabled, config: p.config })),
-      canUseMediaGeneration: () => cachedMediaGenerationEntitled,
+      canUseMediaGeneration: () => true,
     });
   }
   return openClawConfigSync;
@@ -2250,18 +2139,6 @@ const bindCoworkRuntimeForwarder = (): void => {
       if (win.isDestroyed()) return;
       win.webContents.send('cowork:stream:complete', { sessionId, claudeSessionId });
     });
-    // If this session used a server model, notify renderer to refresh quota.
-    try {
-      if (shouldRefreshServerQuotaForSession(sessionId)) {
-        const windows = BrowserWindow.getAllWindows();
-        windows.forEach(win => {
-          if (win.isDestroyed()) return;
-          win.webContents.send(AuthIpcChannel.QuotaChanged);
-        });
-      }
-    } catch {
-      // ignore
-    }
   });
 
   runtime.on('error', (sessionId: string, error: string) => {
@@ -2277,17 +2154,6 @@ const bindCoworkRuntimeForwarder = (): void => {
       if (win.isDestroyed()) return;
       win.webContents.send('cowork:stream:error', { sessionId, error });
     });
-    try {
-      if (shouldRefreshServerQuotaForSession(sessionId)) {
-        windows.forEach(win => {
-          if (!win.isDestroyed()) {
-            win.webContents.send('auth:quotaChanged');
-          }
-        });
-      }
-    } catch {
-      // Quota refresh is best-effort after a runtime error.
-    }
   });
 
   coworkRuntimeForwarderBound = true;
@@ -2832,23 +2698,6 @@ if (!gotTheLock) {
     app.setAsDefaultProtocolClient('egoai');
   }
 
-  const authCallbackRouter = new AuthCallbackRouter({
-    getTarget: () => {
-      if (!mainWindow || mainWindow.isDestroyed()) return null;
-      return mainWindow.webContents;
-    },
-    onParseError: error => {
-      console.error('[Main] Failed to parse deep link:', error);
-    },
-  });
-
-  /**
-   * Parse a egoai:// deep link and send (or buffer) the auth code.
-   */
-  const handleDeepLink = (url: string) => {
-    authCallbackRouter.handleDeepLink(url);
-  };
-
   // First-frame gate for window activation. Showing a window whose renderer
   // has never painted produces a stuck plain-white window (field case: slow
   // first load after install while security software scans the fresh files,
@@ -2904,16 +2753,6 @@ if (!gotTheLock) {
     fn(`[Renderer][${safeTag}] ${safeMessage}`);
   });
 
-  // Allow renderer to retrieve a buffered auth code on init
-  ipcMain.handle(AuthIpcChannel.GetPendingCallback, () =>
-    authCallbackRouter.markListenerReadyAndConsumePending());
-
-  // macOS: handle open-url event for deep links
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
-    handleDeepLink(url);
-  });
-
   app.on('second-instance', (_event, commandLine, workingDirectory) => {
     console.debug('[Main] second-instance event', { commandLine, workingDirectory });
     if (isDataMigrationRestoreInProgress) {
@@ -2922,11 +2761,6 @@ if (!gotTheLock) {
     }
 
     // Check for deep link in command line args (Windows/Linux)
-    const deepLink = commandLine.find(arg => arg.startsWith('egoai://'));
-    if (deepLink) {
-      handleDeepLink(deepLink);
-    }
-
     focusMainWindow('second instance activation');
   });
 
@@ -3234,1119 +3068,6 @@ if (!gotTheLock) {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to open system notification settings',
       };
-    }
-  });
-
-  // ── Auth IPC handlers ──
-
-  let authAccountGeneration = 0;
-  let authExchangeIntentSequence = 0;
-  let activeAuthExchangeIntent: AuthExchangeIntentSnapshot | null = null;
-
-  /**
-   * Helper: Persist auth tokens into the kv store.
-   */
-  const saveAuthTokens = (accessToken: string, refreshToken: string) => {
-    getStore().set('auth_tokens', { accessToken, refreshToken });
-  };
-
-  const getAuthTokens = (): { accessToken: string; refreshToken: string } | null => {
-    return getStore().get<{ accessToken: string; refreshToken: string }>('auth_tokens') || null;
-  };
-
-  const captureAuthStateSnapshot = (): AuthStateSnapshot | null => {
-    const tokens = getAuthTokens();
-    return tokens
-      ? {
-        accountGeneration: authAccountGeneration,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-      }
-      : null;
-  };
-
-  const isCurrentAuthStateSnapshot = (snapshot: AuthStateSnapshot | null): boolean => (
-    snapshot !== null
-    && isAuthStateSnapshotCurrent(snapshot, authAccountGeneration, getAuthTokens())
-  );
-
-  const clearAuthTokens = () => {
-    getStore().delete('auth_tokens');
-  };
-
-  const getAuthUser = (): Record<string, unknown> | null => {
-    try {
-      return getStore().get<Record<string, unknown>>(LogReporterStoreKey.AuthUser) || null;
-    } catch (error) {
-      console.warn('[Auth] failed to read cached auth user:', error);
-      return null;
-    }
-  };
-
-  const saveAuthUser = (user: Record<string, unknown>) => {
-    try {
-      getStore().set(LogReporterStoreKey.AuthUser, user);
-    } catch (error) {
-      console.warn('[Auth] failed to save auth user for attribution:', error);
-    }
-  };
-
-  const getCurrentMediaAccountScope = (): MediaAccountScope | null => {
-    if (!getAuthTokens()) return null;
-    try {
-      const user = getStore().get<Record<string, unknown>>(LogReporterStoreKey.AuthUser);
-      const ownerAccountKey = createAccountOwnerKey({ user });
-      return ownerAccountKey
-        ? { ownerAccountKey, accountGeneration: authAccountGeneration }
-        : null;
-    } catch (error) {
-      console.warn('[MediaGeneration] failed to resolve authenticated account owner:', error);
-      return null;
-    }
-  };
-  const notifyAuthQuotaChanged = (): void => {
-    BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed()) win.webContents.send(AuthIpcChannel.QuotaChanged);
-    });
-  };
-
-  const getAuthUserId = (): string | null => {
-    try {
-      const user = getAuthUser();
-      const yid = user?.yid;
-      if (typeof yid === 'string' && yid.trim()) return yid;
-      const userId = user?.userId;
-      if (typeof userId === 'string' && userId.trim()) return userId;
-    } catch (error) {
-      console.warn('[Auth] failed to read auth user for attribution:', error);
-    }
-    return null;
-  };
-
-  const clearAuthUser = () => {
-    try {
-      getStore().delete(LogReporterStoreKey.AuthUser);
-    } catch (error) {
-      console.warn('[Auth] failed to clear auth user for attribution:', error);
-    }
-  };
-
-  const getOrCreateInstallationId = (): string | null => {
-    try {
-      const existing = getStore().get<string>(INSTALLATION_UUID_KEY);
-      if (typeof existing === 'string' && existing.trim()) {
-        return existing;
-      }
-      const nextId = crypto.randomUUID();
-      getStore().set(INSTALLATION_UUID_KEY, nextId);
-      return nextId;
-    } catch (error) {
-      console.warn('[Auth] failed to get installation uuid:', error);
-      return null;
-    }
-  };
-
-  const buildKeyfromPayload = (): {
-    firstKeyfrom: string;
-    latestKeyfrom: string;
-    uuid?: string;
-    userId?: string;
-    version: string;
-  } => {
-    const { firstKeyfrom, latestKeyfrom } = getKeyfromAttribution(getStore());
-    const uuid = getOrCreateInstallationId();
-    const userId = getAuthUserId();
-    return {
-      firstKeyfrom,
-      latestKeyfrom,
-      ...(uuid ? { uuid } : {}),
-      ...(userId ? { userId } : {}),
-      version: app.getVersion(),
-    };
-  };
-
-  const withKeyfromBody = <T extends Record<string, unknown>>(body: T) => ({
-    ...body,
-    ...buildKeyfromPayload(),
-  });
-
-  const appendKeyfromQuery = (url: string): string => {
-    const parsed = new URL(url);
-    const payload = buildKeyfromPayload();
-    for (const [key, value] of Object.entries(payload)) {
-      if (value) {
-        parsed.searchParams.set(key, String(value));
-      }
-    }
-    return parsed.toString();
-  };
-
-  const emitAuthLifecycleEvent = (event: AuthLifecycleEvent): void => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(AuthIpcChannel.LifecycleEvent, event);
-    }
-  };
-
-  const emitAuthSessionChanged = (event: AuthSessionChangedEvent): void => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send(AuthIpcChannel.SessionChanged, event);
-      }
-    }
-  };
-
-  const getAuthSessionKey = (): string | null => {
-    if (!getAuthTokens()) return null;
-    const scope = getCurrentMediaAccountScope();
-    return `${scope?.ownerAccountKey ?? 'unresolved'}:${authAccountGeneration}`;
-  };
-
-  const authSessionManager = new AuthSessionManager({
-    getTokens: getAuthTokens,
-    getSessionKey: getAuthSessionKey,
-    saveTokens: tokens => saveAuthTokens(tokens.accessToken, tokens.refreshToken),
-    fetch: (url, options) => net.fetch(url, options),
-    getRefreshUrl: () => `${getServerApiBaseUrl()}/api/auth/refresh`,
-    buildRefreshRequestBody: refreshToken => JSON.stringify(withKeyfromBody({ refreshToken })),
-    onTerminalFailure: () => {
-      clearLocalAuthSession({
-        reason: AuthSessionChangeReason.RefreshRejected,
-        notifyRenderer: true,
-      });
-    },
-    onRefreshSuccess: result => {
-      syncOpenClawConfig({
-        reason: `token-refresh:${result.reason}`,
-        restartGatewayIfRunning: false,
-      }).catch((error) => {
-        console.warn('[Auth] post-refresh OpenClaw config sync failed:', error);
-      });
-    },
-    onLifecycleEvent: emitAuthLifecycleEvent,
-    log: {
-      info: message => console.log(message),
-      warn: (message, error) => {
-        if (error === undefined) {
-          console.warn(message);
-        } else {
-          console.warn(message, error);
-        }
-      },
-    },
-  });
-  waitForPendingTokenRefresh = () => authSessionManager.waitForPendingRefresh();
-
-  const fetchWithAuth = async (url: string, options?: RequestInit): Promise<Response> => {
-    return authSessionManager.fetchWithAuth(url, options);
-  };
-
-  type AvailableServerModel = ServerModelMetadataInput & {
-    modelId: string;
-    modelName: string;
-    provider: string;
-    apiFormat: string;
-    costMultiplier?: number;
-    description?: string;
-    moreModel?: boolean;
-    accessible?: boolean;
-    restrictionHint?: string;
-  };
-
-  const loadAvailableServerModels = async (options: {
-    reason: string;
-    awaitConfigSync?: boolean;
-    forceConfigSync?: boolean;
-  }): Promise<AvailableServerModel[]> => {
-    const requestAccountGeneration = authAccountGeneration;
-    const requestAccountScope = getCurrentMediaAccountScope();
-    const serverBaseUrl = getServerApiBaseUrl();
-    const url = appendKeyfromQuery(`${serverBaseUrl}/api/models/available`);
-    console.log(`[Auth:getModels] requesting available models at ${url}`);
-    const resp = await fetchWithAuth(url, {
-      headers: buildServerModelCapabilityHeaders(app.getVersion()),
-    });
-    console.log('[Auth:getModels] Response status:', resp.status);
-    if (!resp.ok) {
-      throw new Error(`Server model request failed with HTTP ${resp.status}.`);
-    }
-
-    const responseAuthState = captureAuthStateSnapshot();
-    const data = (await resp.json()) as {
-      code: number;
-      message?: string;
-      data?: AvailableServerModel[];
-    };
-    if (
-      authAccountGeneration !== requestAccountGeneration
-      || !isCurrentAuthStateSnapshot(responseAuthState)
-      || !isMediaAccountScopeSnapshotCurrent(
-        requestAccountScope,
-        getCurrentMediaAccountScope(),
-      )
-    ) {
-      throw new Error('Account changed while loading server models');
-    }
-    console.log('[Auth:getModels] Response data:', JSON.stringify(data).slice(0, 500));
-    if (data.code !== 0 || !Array.isArray(data.data)) {
-      throw new Error(data.message || 'Server model response is invalid.');
-    }
-
-    const serverModelsChanged = updateServerModelMetadata(data.data);
-    const serverModelIds = data.data.map(model => model.modelId);
-    const serverModelsMissingFromConfig = !openClawConfigHasServerModels(serverModelIds);
-    const configSyncOptions = {
-      metadataChanged: serverModelsChanged,
-      modelsMissingFromConfig: serverModelsMissingFromConfig,
-      forceConfigSync: options.forceConfigSync,
-    };
-    if (shouldSyncServerModelConfig(configSyncOptions)) {
-      console.log(
-        `[Auth:getModels] syncing OpenClaw config for ${serverModelIds.length} server model(s); `
-        + `metadataChanged=${serverModelsChanged} missingFromConfig=${serverModelsMissingFromConfig} `
-        + `forced=${options.forceConfigSync === true}`,
-      );
-      const syncPromise = syncServerModelConfigIfNeeded({
-        ...configSyncOptions,
-        sync: () => syncOpenClawConfig({
-          reason: options.reason,
-          restartGatewayIfRunning: false,
-        }),
-      });
-      if (options.awaitConfigSync) {
-        await syncPromise;
-      } else {
-        syncPromise.catch((error) => {
-          console.warn('[Auth:getModels] failed to sync OpenClaw config after loading server models:', error);
-        });
-      }
-    } else {
-      console.debug('[Auth:getModels] server model metadata unchanged, skipping config sync');
-    }
-
-    return data.data.map((model) => {
-      const metadata = getServerModelMetadata(model.modelId);
-      return {
-        ...model,
-        runtimeProfile: metadata?.runtimeProfile,
-        supportsImage: metadata?.supportsImage,
-        supportsVideo: metadata?.supportsVideo,
-        supportsThinking: metadata?.supportsThinking,
-        thinkingConfig: metadata?.thinkingConfig,
-        requestCapabilities: metadata?.requestCapabilities,
-        supportsToolCalling: metadata?.supportsToolCalling,
-        agenticReady: metadata?.agenticReady,
-        contextWindow: metadata?.contextWindow,
-        maxTokens: metadata?.maxTokens,
-        explicitContextCache: metadata?.explicitContextCache,
-      };
-    });
-  };
-
-  let pendingServerModelPreflightRefresh: Promise<AvailableServerModel[]> | null = null;
-
-  const refreshServerModelsForRunPreflight = (): Promise<AvailableServerModel[]> => {
-    if (pendingServerModelPreflightRefresh) {
-      return pendingServerModelPreflightRefresh;
-    }
-    pendingServerModelPreflightRefresh = loadAvailableServerModels({
-      reason: 'server-model-run-preflight',
-      awaitConfigSync: true,
-      forceConfigSync: true,
-    }).finally(() => {
-      pendingServerModelPreflightRefresh = null;
-    });
-    return pendingServerModelPreflightRefresh;
-  };
-
-  const resolveCoworkRunModelRef = (options: {
-    sessionId?: string;
-    modelOverride?: string;
-    agentId?: string;
-  }): string => {
-    const session = options.sessionId
-      ? getCoworkStore().getSession(options.sessionId)
-      : null;
-    const agentId = options.agentId?.trim() || session?.agentId || 'main';
-    const rawModelRef = options.modelOverride?.trim()
-      || session?.modelOverride?.trim()
-      || getAgentManager().getAgent(agentId)?.model?.trim()
-      || resolveDefaultAgentModelRef();
-    return rawModelRef?.trim() || '';
-  };
-
-  const getServerModelRunGateError = (reason: ServerModelRunGateReason): string => {
-    switch (reason) {
-      case ServerModelRunGateReason.MetadataMissing:
-        return t('serverModelMetadataUnavailable');
-      case ServerModelRunGateReason.RuntimeProfileMissing:
-      case ServerModelRunGateReason.RuntimeProfileUnsupported:
-      case ServerModelRunGateReason.TransportUnsupported:
-        return t('serverModelRuntimeProfileUnsupported');
-      case ServerModelRunGateReason.ToolCallingUnavailable:
-        return t('serverModelToolCallingUnavailable');
-      case ServerModelRunGateReason.AgenticNotReady:
-        return t('serverModelAgenticNotReady');
-    }
-  };
-
-  const ensureServerModelReadyForRun = async (
-    modelRef: string,
-  ): Promise<{ allowed: true } | { allowed: false; error: string }> => {
-    const resolveRunModelRef = () => resolveServerModelRefForRun({
-      modelRef,
-      availableProviders: buildAvailableOpenClawProviders(),
-      isKnownServerModelCandidate: isKnownPackageKimiK3ModelId,
-    });
-    const blockForUnavailableIdentity = (
-      status: string,
-      modelId: string,
-      providerIds?: string[],
-    ): { allowed: false; error: string } => {
-      console.warn(
-        `[Cowork] blocked server model run for "${modelId}"; `
-        + `providerResolution=${status}`
-        + (providerIds?.length ? ` providers=${providerIds.join(',')}` : ''),
-      );
-      return {
-        allowed: false,
-        error: t('serverModelMetadataUnavailable'),
-      };
-    };
-
-    let resolution = resolveRunModelRef();
-    let refreshed = false;
-    if (resolution.status === ServerModelRefResolutionStatus.RefreshRequired) {
-      try {
-        await refreshServerModelsForRunPreflight();
-        refreshed = true;
-      } catch (error) {
-        console.warn(
-          `[Cowork] failed to refresh server model metadata before resolving "${resolution.modelId}":`,
-          error,
-        );
-        return {
-          allowed: false,
-          error: t('serverModelMetadataUnavailable'),
-        };
-      }
-      resolution = resolveRunModelRef();
-    }
-
-    if (resolution.status === ServerModelRefResolutionStatus.Ambiguous) {
-      return blockForUnavailableIdentity(
-        resolution.status,
-        resolution.modelId,
-        resolution.providerIds,
-      );
-    }
-    if (resolution.status === ServerModelRefResolutionStatus.RefreshRequired) {
-      return blockForUnavailableIdentity(resolution.status, resolution.modelId);
-    }
-    if (
-      resolution.status === ServerModelRefResolutionStatus.NonServer
-      || resolution.status === ServerModelRefResolutionStatus.Unresolved
-    ) {
-      return { allowed: true };
-    }
-
-    let gate = evaluateServerModelRunGate(resolution.modelId);
-    const requiresFreshK3Metadata = gate.allowed === true
-      && gate.metadata.runtimeProfile === ModelRuntimeProfile.MoonshotKimiK3;
-    if (!refreshed && (gate.allowed === false || requiresFreshK3Metadata)) {
-      try {
-        await refreshServerModelsForRunPreflight();
-        refreshed = true;
-      } catch (error) {
-        console.warn(
-          `[Cowork] failed to refresh server model metadata before run for "${resolution.modelId}":`,
-          error,
-        );
-        return {
-          allowed: false,
-          error: t('serverModelMetadataUnavailable'),
-        };
-      }
-      const refreshedResolution = resolveRunModelRef();
-      if (
-        refreshedResolution.status !== ServerModelRefResolutionStatus.Server
-        || refreshedResolution.modelId !== resolution.modelId
-      ) {
-        return blockForUnavailableIdentity(
-          refreshedResolution.status,
-          refreshedResolution.modelId,
-          'providerIds' in refreshedResolution
-            ? refreshedResolution.providerIds
-            : undefined,
-        );
-      }
-      resolution = refreshedResolution;
-      gate = evaluateServerModelRunGate(resolution.modelId);
-    }
-    if (gate.allowed === true) {
-      return { allowed: true };
-    }
-
-    console.warn(
-      `[Cowork] blocked server model run for "${resolution.modelId}"; reason=${gate.reason}.`,
-    );
-    return {
-      allowed: false,
-      error: getServerModelRunGateError(gate.reason),
-    };
-  };
-
-  const capturePublishingRequest = (): {
-    accountScope: MediaAccountScope;
-    scopedFetch: typeof fetchWithAuth;
-  } => {
-    const accountScope = getCurrentMediaAccountScope();
-    if (accountScope === null) {
-      throw new Error(t('authLoginRequired'));
-    }
-    return {
-      accountScope,
-      scopedFetch: createAccountScopedFetch(
-        accountScope,
-        getCurrentMediaAccountScope,
-        fetchWithAuth,
-      ),
-    };
-  };
-
-  const MEDIA_ENTITLEMENT_SYNC_REASON = 'media-entitlement-changed';
-
-  const getAuthQuotaGateState = () => ({
-    subscriptionStatus: cachedSubscriptionStatus,
-    mediaGenerationEntitled: cachedMediaGenerationEntitled,
-  });
-
-  const hasAuthQuotaGateStateChanged = (previous: ReturnType<typeof getAuthQuotaGateState>) => (
-    cachedSubscriptionStatus !== previous.subscriptionStatus
-    || cachedMediaGenerationEntitled !== previous.mediaGenerationEntitled
-  );
-
-  const syncOpenClawConfigIfAuthQuotaGateChanged = (previous: ReturnType<typeof getAuthQuotaGateState>) => {
-    if (hasAuthQuotaGateStateChanged(previous)) {
-      // The auth quota gate is enforced in the main process. Let config sync
-      // decide whether its rendered changes require a restart instead of
-      // forcing one before the post-login server-model metadata sync.
-      syncOpenClawConfig({ reason: MEDIA_ENTITLEMENT_SYNC_REASON, restartGatewayIfRunning: false }).catch((error) => {
-        console.warn('[Auth] failed to sync OpenClaw config after quota gate changed:', error);
-      });
-      return true;
-    }
-    return false;
-  };
-
-  const resetAuthQuotaGateState = () => {
-    const defaultGateState = createDefaultAuthQuotaGateState();
-    cachedSubscriptionStatus = defaultGateState.subscriptionStatus;
-    cachedMediaGenerationEntitled = defaultGateState.mediaGenerationEntitled;
-  };
-
-  const clearLocalAuthSession = (options: {
-    reason: AuthSessionChangeReason;
-    notifyRenderer: boolean;
-  }): void => {
-    const previousQuotaGateState = getAuthQuotaGateState();
-    authExchangeIntentSequence += 1;
-    activeAuthExchangeIntent = null;
-    authAccountGeneration += 1;
-    clearAuthTokens();
-    clearAuthUser();
-    clearServerModelMetadata();
-    resetAuthQuotaGateState();
-
-    const quotaGateSyncScheduled = syncOpenClawConfigIfAuthQuotaGateChanged(previousQuotaGateState);
-    if (!quotaGateSyncScheduled) {
-      const syncReason = options.reason === AuthSessionChangeReason.EnterpriseMembershipRevoked
-        ? 'enterprise-membership-revoked-server-models-cleared'
-        : options.reason === AuthSessionChangeReason.RefreshRejected
-          ? 'auth-session-expired-server-models-cleared'
-          : 'auth-logout-server-models-cleared';
-      syncOpenClawConfig({
-        reason: syncReason,
-        restartGatewayIfRunning: false,
-      }).catch(error => {
-        console.warn('[Auth] failed to sync OpenClaw config after auth cleanup:', error);
-      });
-    }
-
-    if (options.notifyRenderer) {
-      emitAuthSessionChanged({
-        status: AuthSessionStatus.Expired,
-        reason: options.reason,
-      });
-      emitAuthLifecycleEvent({
-        eventType: AuthLifecycleEventType.TerminalExpired,
-        outcome: AuthSessionStatus.Expired,
-        reason: options.reason,
-      });
-    }
-  };
-
-  /**
-   * Normalize quota data from various server response formats into a unified shape.
-   */
-  const normalizeQuota = (raw: Record<string, unknown>) => {
-    const quota = normalizeAuthQuota(raw, {
-      freePlanName: t('authPlanFree'),
-      standardPlanName: t('authPlanStandard'),
-      fallbackSubscriptionStatus: cachedSubscriptionStatus,
-    });
-    const quotaGateState = authQuotaGateStateFromQuota(quota);
-    cachedSubscriptionStatus = quotaGateState.subscriptionStatus;
-    cachedMediaGenerationEntitled = quotaGateState.mediaGenerationEntitled;
-    return quota;
-  };
-
-  ipcMain.handle(AuthIpcChannel.Login, async (_event, { loginUrl }: { loginUrl?: string } = {}) => {
-    const baseUrl = loginUrl || `${getServerApiBaseUrl()}/login`;
-    const fallbackUrl = appendLoginParams(baseUrl, { source: 'electron' });
-    let localCallback: Awaited<ReturnType<typeof startAuthLocalCallback>> | null = null;
-
-    try {
-      console.log('[Auth] starting browser login with local callback server');
-      localCallback = await startAuthLocalCallback({
-        onCode: code => {
-          authCallbackRouter.handleAuthCode(code);
-          focusMainWindow('local auth callback');
-        },
-      });
-      const returnTo = appendLoginParams(baseUrl, {
-        source: 'electron',
-        electronLogin: 'success',
-      });
-      const finalUrl = appendLoginParams(baseUrl, {
-        source: 'electron',
-        redirect_uri: appendCallbackReturnTo(localCallback.redirectUri, returnTo),
-        state: localCallback.state,
-      });
-      console.log('[Auth] opening portal login with local callback redirect');
-      await shell.openExternal(finalUrl);
-      return { success: true, redirectUrl: finalUrl };
-    } catch (error) {
-      // The callback may be shared by another login page and will clean itself up on timeout.
-      console.warn('[Auth] local callback login failed, falling back to deep link login:', error);
-      try {
-        await shell.openExternal(fallbackUrl);
-        return { success: true, redirectUrl: fallbackUrl };
-      } catch (fallbackError) {
-        console.error('[Auth] login failed:', fallbackError);
-        return {
-          success: false,
-          error: fallbackError instanceof Error ? fallbackError.message : 'Failed to open login',
-        };
-      }
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.Exchange, async (_event, { code }: { code: string }) => {
-    const startingTokens = getAuthTokens();
-    const startingUser = getAuthUser();
-    const startingQuotaGateState = getAuthQuotaGateState();
-    const startingServerModels = getAllServerModelMetadata();
-    const exchangeIntent: AuthExchangeIntentSnapshot = {
-      intentId: ++authExchangeIntentSequence,
-      accountGeneration: authAccountGeneration,
-      accessToken: startingTokens?.accessToken ?? null,
-      refreshToken: startingTokens?.refreshToken ?? null,
-    };
-    activeAuthExchangeIntent = exchangeIntent;
-    const isExchangeIntentCurrent = (): boolean => isAuthExchangeIntentCurrent(
-      exchangeIntent,
-      activeAuthExchangeIntent?.intentId ?? null,
-      authAccountGeneration,
-      getAuthTokens(),
-    );
-    let committedExchangeGeneration: number | null = null;
-
-    try {
-      const serverBaseUrl = getServerApiBaseUrl();
-      const exchangeUrl = `${serverBaseUrl}/api/auth/exchange`;
-      console.log(`[Auth] requesting auth exchange at ${exchangeUrl}`);
-      const resp = await net.fetch(exchangeUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(withKeyfromBody({ authCode: code })),
-      });
-      if (!resp.ok) {
-        return { success: false, error: `Exchange failed: ${resp.status}` };
-      }
-      const body = (await resp.json()) as {
-        code: number;
-        message?: string;
-        data: {
-          accessToken: string;
-          refreshToken: string;
-          user: Record<string, unknown>;
-          quota: Record<string, unknown>;
-        };
-      };
-      if (body.code !== 0 || !body.data) {
-        return { success: false, error: body.message || 'Exchange failed' };
-      }
-      if (!isExchangeIntentCurrent()) {
-        return { success: false, error: t('authAccountChanged') };
-      }
-
-      activeAuthExchangeIntent = null;
-      authAccountGeneration += 1;
-      const exchangeAccountGeneration = authAccountGeneration;
-      clearServerModelMetadata();
-      // A login exchange can switch accounts without an explicit logout.
-      // Reset entitlement fallbacks before normalizing the new account so a
-      // partial quota payload cannot inherit the previous account's plan.
-      resetAuthQuotaGateState();
-      saveAuthTokens(body.data.accessToken, body.data.refreshToken);
-      saveAuthUser(body.data.user);
-      committedExchangeGeneration = exchangeAccountGeneration;
-      if (
-        authAccountGeneration !== exchangeAccountGeneration
-        || authExchangeIntentSequence !== exchangeIntent.intentId
-      ) {
-        return { success: false, error: t('authAccountChanged') };
-      }
-      const quota = normalizeQuota(body.data.quota);
-      syncOpenClawConfigIfAuthQuotaGateChanged(startingQuotaGateState);
-      return {
-        success: true,
-        user: body.data.user,
-        quota,
-      };
-    } catch (error) {
-      if (
-        committedExchangeGeneration !== null
-        && authAccountGeneration === committedExchangeGeneration
-        && authExchangeIntentSequence === exchangeIntent.intentId
-      ) {
-        authAccountGeneration += 1;
-        if (startingTokens) {
-          saveAuthTokens(startingTokens.accessToken, startingTokens.refreshToken);
-        } else {
-          clearAuthTokens();
-        }
-        if (startingUser) {
-          saveAuthUser(startingUser);
-        } else {
-          clearAuthUser();
-        }
-        updateServerModelMetadata(startingServerModels);
-        cachedSubscriptionStatus = startingQuotaGateState.subscriptionStatus;
-        cachedMediaGenerationEntitled = startingQuotaGateState.mediaGenerationEntitled;
-        syncOpenClawConfig({
-          reason: 'auth-exchange-rollback',
-          restartGatewayIfRunning: false,
-        }).catch(syncError => {
-          console.warn('[Auth] failed to sync OpenClaw config after exchange rollback:', syncError);
-        });
-        console.warn('[Auth] rolled back local credentials after an incomplete exchange');
-      }
-      console.error('[Auth] exchange failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Exchange failed',
-      };
-    } finally {
-      if (activeAuthExchangeIntent?.intentId === exchangeIntent.intentId) {
-        activeAuthExchangeIntent = null;
-      }
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetUser, async () => {
-    const createUnavailableResponse = () => {
-      const hasCredentials = Boolean(getAuthTokens());
-      return {
-        success: false,
-        status: hasCredentials
-          ? AuthSessionStatus.TemporarilyUnavailable
-          : AuthSessionStatus.Unauthenticated,
-        hasCredentials,
-        cachedUser: hasCredentials ? getAuthUser() : null,
-      };
-    };
-
-    try {
-      const tokens = getAuthTokens();
-      if (!tokens) {
-        return {
-          success: false,
-          status: AuthSessionStatus.Unauthenticated,
-          hasCredentials: false,
-        };
-      }
-      const requestAccountGeneration = authAccountGeneration;
-      const requestAccountScope = getCurrentMediaAccountScope();
-      const serverBaseUrl = getServerApiBaseUrl();
-      // Fetch user profile
-      const profileResp = await fetchWithAuth(`${serverBaseUrl}/api/user/profile`);
-      if (authAccountGeneration !== requestAccountGeneration) {
-        return createUnavailableResponse();
-      }
-      if (!profileResp.ok) {
-        return {
-          success: false,
-          status: AuthSessionStatus.TemporarilyUnavailable,
-          hasCredentials: true,
-          cachedUser: getAuthUser(),
-        };
-      }
-      const profileResponseAuthState = captureAuthStateSnapshot();
-      const profileBody = (await profileResp.json()) as {
-        code: number;
-        data: Record<string, unknown>;
-      };
-      if (!isCurrentAuthStateSnapshot(profileResponseAuthState)) {
-        return createUnavailableResponse();
-      }
-      if (profileBody.code !== 0 || !profileBody.data) {
-        return {
-          success: false,
-          status: AuthSessionStatus.TemporarilyUnavailable,
-          hasCredentials: true,
-          cachedUser: getAuthUser(),
-        };
-      }
-      saveAuthUser(profileBody.data);
-      // Fetch quota separately
-      const quotaResp = await fetchWithAuth(`${serverBaseUrl}/api/user/quota`);
-      if (authAccountGeneration !== requestAccountGeneration) {
-        return createUnavailableResponse();
-      }
-      let quota = null;
-      if (quotaResp.ok) {
-        const quotaResponseAuthState = captureAuthStateSnapshot();
-        const quotaBody = (await quotaResp.json()) as {
-          code: number;
-          data: Record<string, unknown>;
-        };
-        if (!isCurrentAuthStateSnapshot(quotaResponseAuthState)) {
-          return createUnavailableResponse();
-        }
-        if (quotaBody.code === 0 && quotaBody.data) {
-          const previousQuotaGateState = getAuthQuotaGateState();
-          quota = normalizeQuota(quotaBody.data);
-          syncOpenClawConfigIfAuthQuotaGateChanged(previousQuotaGateState);
-        }
-      }
-      if (authAccountGeneration !== requestAccountGeneration) {
-        return createUnavailableResponse();
-      }
-      return {
-        success: true,
-        status: AuthSessionStatus.Authenticated,
-        user: profileBody.data,
-        quota,
-      };
-    } catch (error) {
-      const status = resolveAuthSessionStatusFromError(error);
-      if (status === AuthSessionStatus.TemporarilyUnavailable) {
-        console.warn('[Auth] getUser temporarily unavailable:', error);
-      }
-      return {
-        success: false,
-        status,
-        hasCredentials: status !== AuthSessionStatus.Unauthenticated && Boolean(getAuthTokens()),
-        cachedUser: status === AuthSessionStatus.TemporarilyUnavailable
-          ? getAuthUser()
-          : null,
-      };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetQuota, async () => {
-    try {
-      const tokens = getAuthTokens();
-      if (!tokens) return { success: false };
-      const requestAccountGeneration = authAccountGeneration;
-      const requestAccountScope = getCurrentMediaAccountScope();
-      const serverBaseUrl = getServerApiBaseUrl();
-      const resp = await fetchWithAuth(`${serverBaseUrl}/api/user/quota`);
-      if (authAccountGeneration !== requestAccountGeneration) return { success: false };
-      if (!resp.ok) return { success: false };
-      const responseAuthState = captureAuthStateSnapshot();
-      const body = (await resp.json()) as { code: number; data: Record<string, unknown> };
-      if (!isCurrentAuthStateSnapshot(responseAuthState)) return { success: false };
-      if (body.code !== 0 || !body.data) return { success: false };
-      const previousQuotaGateState = getAuthQuotaGateState();
-      const quota = normalizeQuota(body.data);
-      syncOpenClawConfigIfAuthQuotaGateChanged(previousQuotaGateState);
-      return {
-        success: true,
-        quota,
-      };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetProfileSummary, async () => {
-    try {
-      const tokens = getAuthTokens();
-      if (!tokens) return { success: false };
-      const requestAccountGeneration = authAccountGeneration;
-      const requestAccountScope = getCurrentMediaAccountScope();
-      if (requestAccountScope === null) return { success: false };
-      const serverBaseUrl = getServerApiBaseUrl();
-      const profileSummaryUrl = appendKeyfromQuery(`${serverBaseUrl}/api/user/profile-summary`);
-      console.log(`[Auth] requesting profile summary at ${profileSummaryUrl}`);
-      const resp = await fetchWithAuth(profileSummaryUrl);
-      if (
-        authAccountGeneration !== requestAccountGeneration
-        || !isMediaAccountScopeCurrent(requestAccountScope, getCurrentMediaAccountScope())
-      ) {
-        return { success: false };
-      }
-      if (!resp.ok) return { success: false };
-      const responseAuthState = captureAuthStateSnapshot();
-      const body = (await resp.json()) as { code: number; data: Record<string, unknown> };
-      if (
-        !isCurrentAuthStateSnapshot(responseAuthState)
-        || !isMediaAccountScopeCurrent(requestAccountScope, getCurrentMediaAccountScope())
-      ) {
-        return { success: false };
-      }
-      if (body.code !== 0 || !body.data) return { success: false };
-      return { success: true, data: body.data };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.ClaimCreditsFinalReward, async (_event, payload: { campaignCode?: string }) => {
-    try {
-      const campaignCode = payload?.campaignCode?.trim();
-      if (!campaignCode) return { success: false, error: 'Missing campaign code' };
-      const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(`${serverBaseUrl}/api/credits-reset-campaign/free-credits/claim`);
-      const resp = await fetchWithAuth(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignCode }),
-      });
-      const body = (await resp.json()) as {
-        code: number;
-        message?: string;
-        data?: Record<string, unknown>;
-      };
-      if (!resp.ok || body.code !== 0 || !body.data) {
-        return { success: false, error: body.message || `Claim failed (${resp.status})` };
-      }
-      return { success: true, data: body.data };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Claim failed',
-      };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetActiveClientBanner, async () => {
-    try {
-      const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(appendClientBannerVersion(
-        `${serverBaseUrl}/api/client-banners/active?placement=desktop_sidebar`,
-        app.getVersion(),
-      ));
-      const resp = await net.fetch(url, { cache: 'no-store' });
-      if (!resp.ok) return { success: false };
-      const body = (await resp.json()) as { code: number; data: Record<string, unknown> | null };
-      if (body.code !== 0) return { success: false };
-      return { success: true, data: body.data ?? null };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetActiveClientBanners, async () => {
-    try {
-      const serverBaseUrl = getServerApiBaseUrl();
-      const url = appendKeyfromQuery(appendClientBannerVersion(
-        `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
-        app.getVersion(),
-      ));
-      const resp = await net.fetch(url, { cache: 'no-store' });
-      if (!resp.ok) return { success: false };
-      const body = (await resp.json()) as { code: number; data: Record<string, unknown>[] | null };
-      if (body.code !== 0) return { success: false };
-      return { success: true, data: Array.isArray(body.data) ? body.data : [] };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetClientBannerSnapshot, async () => {
-    const serverBaseUrl = getServerApiBaseUrl();
-    try {
-      const snapshotUrl = appendKeyfromQuery(
-        appendClientBannerVersion(
-          `${serverBaseUrl}/api/client-banners/snapshot?placement=desktop_sidebar`,
-          app.getVersion(),
-        ),
-      );
-      const snapshotResponse = await net.fetch(snapshotUrl, { cache: 'no-store' });
-      if (snapshotResponse.ok) {
-        const snapshotBody = (await snapshotResponse.json()) as {
-          code: number;
-          data?: {
-            serverTime?: string;
-            nextRefreshAt?: string | null;
-            banners?: Record<string, unknown>[];
-          };
-        };
-        if (snapshotBody.code === 0
-            && snapshotBody.data
-            && typeof snapshotBody.data.serverTime === 'string'
-            && Array.isArray(snapshotBody.data.banners)) {
-          return {
-            success: true,
-            data: {
-              serverTime: snapshotBody.data.serverTime,
-              nextRefreshAt: snapshotBody.data.nextRefreshAt ?? null,
-              clientVersion: app.getVersion(),
-              banners: snapshotBody.data.banners,
-            },
-          };
-        }
-      }
-    } catch {
-      // Fall through to the legacy list endpoint during mixed-version rollout.
-    }
-
-    try {
-      const legacyUrl = appendKeyfromQuery(
-        appendClientBannerVersion(
-          `${serverBaseUrl}/api/client-banners/active-list?placement=desktop_sidebar`,
-          app.getVersion(),
-        ),
-      );
-      const legacyResponse = await net.fetch(legacyUrl, { cache: 'no-store' });
-      if (!legacyResponse.ok) return { success: false };
-      const legacyBody = (await legacyResponse.json()) as {
-        code: number;
-        data: Record<string, unknown>[] | null;
-      };
-      if (legacyBody.code !== 0) return { success: false };
-      return {
-        success: true,
-        data: {
-          serverTime: new Date().toISOString(),
-          nextRefreshAt: null,
-          clientVersion: app.getVersion(),
-          banners: Array.isArray(legacyBody.data) ? legacyBody.data : [],
-        },
-      };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.Logout, async () => {
-    const tokens = getAuthTokens();
-    const logoutBody = JSON.stringify(withKeyfromBody({}));
-    clearLocalAuthSession({
-      reason: AuthSessionChangeReason.UserLogout,
-      notifyRenderer: false,
-    });
-    console.log('[Auth] cleared local login state and scheduled server model config refresh');
-
-    if (tokens) {
-      try {
-        const serverBaseUrl = getServerApiBaseUrl();
-        const logoutUrl = `${serverBaseUrl}/api/auth/logout`;
-        console.log(`[Auth] requesting logout at ${logoutUrl}`);
-        await net.fetch(logoutUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${tokens.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: logoutBody,
-        });
-      } catch (error) {
-        console.warn('[Auth] remote logout failed after local credentials were cleared:', error);
-      }
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle(AuthIpcChannel.RefreshToken, async () => {
-    try {
-      const result = await authSessionManager.refresh(AuthRefreshReason.Manual);
-      return result.outcome === AuthRefreshOutcome.Success
-        ? { success: true, accessToken: result.accessToken, outcome: result.outcome }
-        : { success: false, outcome: result.outcome };
-    } catch {
-      return { success: false };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetAccessToken, async () => {
-    const tokens = getAuthTokens();
-    return tokens?.accessToken || null;
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetPricingCatalog, async () => {
-    try {
-      const serverBaseUrl = getServerApiBaseUrl();
-      const url = `${serverBaseUrl}/api/models/pricing-catalog`;
-      console.log(`[Auth:getPricingCatalog] requesting public pricing catalog at ${url}`);
-      const resp = await net.fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      console.log(`[Auth:getPricingCatalog] server returned HTTP ${resp.status}.`);
-      if (!resp.ok) {
-        return { success: false, error: `HTTP ${resp.status}` };
-      }
-      const body = await resp.json() as {
-        code: number;
-        message?: string;
-        data?: {
-          textModels?: unknown[];
-          imageModels?: unknown[];
-          videoModels?: unknown[];
-        };
-      };
-      if (body.code !== 0) {
-        console.warn('[Auth:getPricingCatalog] server rejected pricing catalog request:', serializeForLog({
-          code: body.code,
-          message: body.message,
-        }));
-        return { success: false, error: body.message || 'Failed to load pricing catalog.' };
-      }
-      const textModels = Array.isArray(body.data?.textModels) ? body.data.textModels : [];
-      const imageModels = Array.isArray(body.data?.imageModels) ? body.data.imageModels : [];
-      const videoModels = Array.isArray(body.data?.videoModels) ? body.data.videoModels : [];
-      console.log(
-        '[Auth:getPricingCatalog] loaded public pricing catalog: '
-        + `${textModels.length} text, ${imageModels.length} image, ${videoModels.length} video models.`,
-      );
-      return { success: true, textModels, imageModels, videoModels };
-    } catch (error) {
-      console.error('[Auth:getPricingCatalog] pricing catalog request failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  });
-
-  ipcMain.handle(AuthIpcChannel.GetModels, async () => {
-    try {
-      const tokens = getAuthTokens();
-      if (!tokens) {
-        console.log('[Auth:getModels] No auth tokens available');
-        return { success: false };
-      }
-      const models = await loadAvailableServerModels({
-        reason: 'server-models-updated',
-      });
-      return { success: true, models };
-    } catch (e) {
-      console.error('[Auth:getModels] Error:', e);
-      return { success: false };
     }
   });
 
@@ -4794,33 +3515,9 @@ if (!gotTheLock) {
     getStore: () => getStore(),
     getProviders: () => {
       const appConfig = getStore().get<{ providers?: Record<string, ProviderConfig> }>('app_config');
-      const providers = { ...(appConfig?.providers ?? {}) };
-      // The billed built-in provider authenticates through the token proxy;
-      // syncing its raw key/baseUrl into dsh would produce a dead route.
-      delete providers[ProviderName.EgoaiServer];
-      return providers;
+      return { ...(appConfig?.providers ?? {}) };
     },
-    getPlanProvider: () => {
-      // The billed plan has no user-supplied key: requests go to the local
-      // token proxy, which swaps in the account's access token. Without a
-      // running proxy there is nothing usable to hand dsh.
-      const proxyPort = getOpenClawTokenProxyPort();
-      if (!proxyPort) return null;
-      const planModels = getAllServerModelMetadata();
-      if (planModels.length === 0) return null;
-      return {
-        baseUrl: `http://127.0.0.1:${proxyPort}/v1`,
-        displayName: t('dshPlanProviderName'),
-        models: planModels.map(model => ({
-          modelId: model.modelId,
-          modelName: model.modelName,
-          apiFormat: model.apiFormat,
-          supportsImage: model.supportsImage,
-          contextWindow: model.contextWindow,
-          maxTokens: model.maxTokens,
-        })),
-      };
-    },
+    getPlanProvider: () => null,
     getDefaultCwd: () => {
       try {
         const workingDirectory = getCoworkStore().getConfig().workingDirectory?.trim();
@@ -4868,34 +3565,15 @@ if (!gotTheLock) {
     ) => {
       try {
         const ipcStartedAtMs = Date.now();
-        const requestAccountScope = getCurrentMediaAccountScope();
         console.log(
           '[CoworkFirstResponseTiming] start IPC received.',
           `Prompt length ${options.prompt.length}.`,
           `Image attachments ${options.imageAttachments?.length ?? 0}.`,
           `Agent ${options.agentId || 'main'}.`,
         );
-        const modelRunGate = await ensureServerModelReadyForRun(
-          resolveCoworkRunModelRef({
-            modelOverride: options.modelOverride,
-            agentId: options.agentId,
-          }),
-        );
-        if (modelRunGate.allowed === false) {
-          return { success: false, error: modelRunGate.error };
-        }
         const engineStatus = await ensureOpenClawRunningForCowork();
         if (engineStatus.phase !== 'running') {
           return getEngineNotReadyResponse(engineStatus);
-        }
-        if (!isMediaAccountScopeSnapshotCurrent(
-          requestAccountScope,
-          getCurrentMediaAccountScope(),
-        )) {
-          return {
-            success: false,
-            error: t('authAccountChanged'),
-          };
         }
 
         const coworkStoreInstance = getCoworkStore();
@@ -5090,31 +3768,15 @@ if (!gotTheLock) {
     ) => {
       try {
         const ipcStartedAtMs = Date.now();
-        const requestAccountScope = getCurrentMediaAccountScope();
         console.log(
           '[CoworkFirstResponseTiming] continue IPC received.',
           `Session ${options.sessionId}.`,
           `Prompt length ${options.prompt.length}.`,
           `Image attachments ${options.imageAttachments?.length ?? 0}.`,
         );
-        const modelRunGate = await ensureServerModelReadyForRun(
-          resolveCoworkRunModelRef({ sessionId: options.sessionId }),
-        );
-        if (modelRunGate.allowed === false) {
-          return { success: false, error: modelRunGate.error };
-        }
         const engineStatus = await ensureOpenClawRunningForCowork();
         if (engineStatus.phase !== 'running') {
           return getEngineNotReadyResponse(engineStatus);
-        }
-        if (!isMediaAccountScopeSnapshotCurrent(
-          requestAccountScope,
-          getCurrentMediaAccountScope(),
-        )) {
-          return {
-            success: false,
-            error: t('authAccountChanged'),
-          };
         }
 
         const runtime = getCoworkEngineRouter();
@@ -5365,7 +4027,6 @@ if (!gotTheLock) {
       ? options.clientSteerId.trim()
       : `steer-${Date.now()}`;
     try {
-      const requestAccountScope = getCurrentMediaAccountScope();
       const sessionId = typeof options?.sessionId === 'string' ? options.sessionId.trim() : '';
       const text = typeof options?.text === 'string' ? options.text.trim() : '';
       if (!sessionId || !text) {
@@ -5393,19 +4054,6 @@ if (!gotTheLock) {
           reason: CoworkSteerRejectReason.RuntimeRejected,
         };
       }
-      if (!isMediaAccountScopeSnapshotCurrent(
-        requestAccountScope,
-        getCurrentMediaAccountScope(),
-      )) {
-        return {
-          success: false,
-          status: CoworkSteerStatus.Rejected,
-          clientSteerId,
-          reason: CoworkSteerRejectReason.RuntimeRejected,
-          error: t('authAccountChanged'),
-        };
-      }
-
       const runtime = getCoworkEngineRouter();
       if (!runtime.submitSteer) {
         return {
@@ -5418,18 +4066,6 @@ if (!gotTheLock) {
       }
 
       const result = await runtime.submitSteer(sessionId, text, clientSteerId);
-      if (!isMediaAccountScopeSnapshotCurrent(
-        requestAccountScope,
-        getCurrentMediaAccountScope(),
-      )) {
-        return {
-          success: false,
-          status: CoworkSteerStatus.Rejected,
-          clientSteerId,
-          reason: CoworkSteerRejectReason.RuntimeRejected,
-          error: t('authAccountChanged'),
-        };
-      }
       console.debug(
         '[CoworkSteer] steer IPC completed.',
         `Session ${sessionId}.`,
@@ -6664,176 +5300,6 @@ if (!gotTheLock) {
 
   registerPermissionIpcHandlers({ ipcMain, isDev });
 
-  // GitHub Copilot device code authentication handlers
-  ipcMain.handle('github-copilot:request-device-code', async () => {
-    const { requestDeviceCode } = await import('./libs/githubCopilotAuth');
-    try {
-      const result = await requestDeviceCode();
-      return {
-        userCode: result.user_code,
-        verificationUri: result.verification_uri,
-        deviceCode: result.device_code,
-        interval: result.interval,
-        expiresIn: result.expires_in,
-      };
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to request device code');
-    }
-  });
-
-  ipcMain.handle(
-    'github-copilot:poll-for-token',
-    async (
-      _event,
-      {
-        deviceCode,
-        interval,
-        expiresIn,
-      }: { deviceCode: string; interval: number; expiresIn: number },
-    ) => {
-      const { pollForAccessToken, getCopilotToken, getGitHubUser } =
-        await import('./libs/githubCopilotAuth');
-      try {
-        const githubAccessToken = await pollForAccessToken(deviceCode, interval, expiresIn);
-        const githubUser = await getGitHubUser(githubAccessToken);
-        const {
-          token: copilotToken,
-          expiresAt,
-          baseUrl,
-        } = await getCopilotToken(githubAccessToken);
-        // Store the GitHub access token for later token refresh
-        getStore().set('github_copilot_github_token', githubAccessToken);
-        // Register with the token manager for automatic refresh
-        setCopilotTokenState({ copilotToken, baseUrl, expiresAt, githubToken: githubAccessToken });
-        return { success: true, token: copilotToken, githubUser, baseUrl };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Authentication failed',
-        };
-      }
-    },
-  );
-
-  ipcMain.handle('github-copilot:cancel-polling', async () => {
-    const { cancelPolling } = await import('./libs/githubCopilotAuth');
-    cancelPolling();
-  });
-
-  ipcMain.handle('github-copilot:sign-out', async () => {
-    getStore().delete('github_copilot_github_token');
-    clearCopilotTokenState();
-  });
-
-  ipcMain.handle('github-copilot:refresh-token', async () => {
-    try {
-      const state = await refreshCopilotTokenNow();
-      return { success: true, token: state.copilotToken, baseUrl: state.baseUrl };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Token refresh failed',
-      };
-    }
-  });
-
-  // OpenAI ChatGPT (Codex) OAuth handlers — see src/main/libs/openaiCodexAuth.ts.
-  // The login flow opens a browser to https://auth.openai.com/oauth/authorize
-  // and listens on http://127.0.0.1:1455/auth/callback for the redirect, then
-  // writes <CODEX_HOME>/auth.json so the OpenClaw runtime can pick it up.
-  ipcMain.handle('openai-codex-oauth:start', async () => {
-    const { startOpenAICodexLogin } = await import('./libs/openaiCodexAuth');
-    try {
-      const tokens = await startOpenAICodexLogin();
-      return {
-        success: true as const,
-        email: tokens.email ?? null,
-        accountId: tokens.accountId ?? null,
-        expiresAt: tokens.expiresAt,
-      };
-    } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : 'ChatGPT login failed',
-      };
-    }
-  });
-
-  ipcMain.handle('openai-codex-oauth:cancel', async () => {
-    const { cancelOpenAICodexLogin } = await import('./libs/openaiCodexAuth');
-    cancelOpenAICodexLogin();
-  });
-
-  ipcMain.handle('openai-codex-oauth:logout', async () => {
-    const { logoutOpenAICodex } = await import('./libs/openaiCodexAuth');
-    logoutOpenAICodex();
-  });
-
-  ipcMain.handle('openai-codex-oauth:status', async () => {
-    const { readOpenAICodexAuthFile } = await import('./libs/openaiCodexAuth');
-    const tokens = readOpenAICodexAuthFile();
-    if (!tokens) return { loggedIn: false as const };
-    return {
-      loggedIn: true as const,
-      email: tokens.email ?? null,
-      accountId: tokens.accountId ?? null,
-      expiresAt: tokens.expiresAt,
-    };
-  });
-
-  // xAI (Grok) OAuth handlers — see src/main/libs/xaiAuth.ts.
-  // Browser PKCE against https://auth.x.ai with a loopback callback on
-  // http://127.0.0.1:56121/callback; when that fixed port is taken (e.g. an
-  // OpenClaw CLI login), falls back to the device-code flow and streams the
-  // user code to the renderer via 'xai-oauth:device-code'. The credential is
-  // written into the OpenClaw auth-profiles store, where the runtime's xai
-  // plugin injects and auto-refreshes the Bearer token.
-  ipcMain.handle('xai-oauth:start', async (event) => {
-    const xaiAuth = await import('./libs/xaiAuth');
-    try {
-      let result;
-      try {
-        result = await xaiAuth.startXaiOAuthLogin();
-      } catch (err) {
-        if (!(err instanceof xaiAuth.XaiCallbackPortBusyError)) throw err;
-        result = await xaiAuth.startXaiDeviceCodeLogin((info) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send('xai-oauth:device-code', info);
-          }
-        });
-      }
-      // The xai provider entry is only emitted into openclaw.json once a
-      // credential exists — sync now so the change takes effect immediately.
-      void syncOpenClawConfig({ reason: 'xai-oauth-login' });
-      return {
-        success: true as const,
-        email: result.email ?? null,
-        flow: result.flow,
-      };
-    } catch (error) {
-      return {
-        success: false as const,
-        error: error instanceof Error ? error.message : 'xAI login failed',
-      };
-    }
-  });
-
-  ipcMain.handle('xai-oauth:cancel', async () => {
-    const { cancelXaiLogin } = await import('./libs/xaiAuth');
-    cancelXaiLogin();
-  });
-
-  ipcMain.handle('xai-oauth:logout', async () => {
-    const { logoutXai } = await import('./libs/xaiAuth');
-    await logoutXai();
-    void syncOpenClawConfig({ reason: 'xai-oauth-logout' });
-  });
-
-  ipcMain.handle('xai-oauth:status', async () => {
-    const { getXaiOAuthStatus } = await import('./libs/xaiAuth');
-    return getXaiOAuthStatus();
-  });
-
   ipcMain.handle('generate-session-title', async (_event, userInput: string | null) => {
     return generateSessionTitle(userInput, t('coworkDefaultSessionTitle'));
   });
@@ -7427,12 +5893,6 @@ if (!gotTheLock) {
     }
   });
 
-  registerAsrIpcHandlers({
-    getAuthTokens,
-    fetchWithAuth,
-    getServerApiBaseUrl,
-  });
-
   // ---- artifact file watching ----
   const fileWatchers = new Map<
     string,
@@ -7610,25 +6070,6 @@ if (!gotTheLock) {
     return { version: getAppUpdateCoordinator().consumeCompletedUpdateVersion() };
   });
 
-  // Helper: detect if a URL belongs to GitHub Copilot and apply token refresh on 401.
-  const isCopilotUrl = (url: string) => url.includes('githubcopilot.com');
-  const retryCopilotWithRefreshedToken = async (opts: {
-    url: string;
-    method: string;
-    headers: Record<string, string>;
-    body?: string;
-  }): Promise<{ headers: Record<string, string>; retried: boolean }> => {
-    try {
-      const state = await refreshCopilotTokenNow();
-      const refreshedHeaders = { ...opts.headers, Authorization: `Bearer ${state.copilotToken}` };
-      console.log('[CopilotRetry] token refreshed, retrying request');
-      return { headers: refreshedHeaders, retried: true };
-    } catch (err) {
-      console.warn('[CopilotRetry] token refresh failed, not retrying:', err);
-      return { headers: opts.headers, retried: false };
-    }
-  };
-
   // API 代理处理程序 - 解决 CORS 问题
   ipcMain.handle(
     'api:fetch',
@@ -7687,21 +6128,6 @@ if (!gotTheLock) {
           );
         }
 
-        // Auto-retry once for Copilot 401/403
-        if (
-          !result.ok &&
-          (result.status === 401 || result.status === 403) &&
-          isCopilotUrl(options.url)
-        ) {
-          console.log('[api:fetch] Copilot auth error, attempting token refresh and retry');
-          const { headers: refreshedHeaders, retried } =
-            await retryCopilotWithRefreshedToken(options);
-          if (retried) {
-            result = await doFetch(refreshedHeaders);
-            console.log(`[api:fetch] retry -> ${result.status} ${result.statusText}`);
-          }
-        }
-
         return result;
       } catch (error) {
         console.error(
@@ -7745,26 +6171,6 @@ if (!gotTheLock) {
           body: options.body,
           signal: controller.signal,
         });
-
-        // Auto-retry once for Copilot 401/403
-        if (
-          !response.ok &&
-          (response.status === 401 || response.status === 403) &&
-          isCopilotUrl(options.url)
-        ) {
-          console.log('[api:stream] Copilot auth error, attempting token refresh and retry');
-          const { headers: refreshedHeaders, retried } =
-            await retryCopilotWithRefreshedToken(options);
-          if (retried) {
-            response = await session.defaultSession.fetch(options.url, {
-              method: options.method,
-              headers: refreshedHeaders,
-              body: options.body,
-              signal: controller.signal,
-            });
-            console.log(`[api:stream] retry -> ${response.status} ${response.statusText}`);
-          }
-        }
 
         if (!response.ok) {
           const errorData = await response.text();
@@ -8169,7 +6575,6 @@ if (!gotTheLock) {
 
     // 处理渲染进程崩溃或退出
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
-      authCallbackRouter.markRendererUnavailable();
       console.error('Window render process gone:', details);
       scheduleReload('webContents-crashed');
     });
@@ -8232,7 +6637,6 @@ if (!gotTheLock) {
       if (isMainFrame && !isInPlace) {
         isOpenSessionFromNotificationReady = false;
       }
-      authCallbackRouter.handleNavigationStarted({ isMainFrame, isInPlace });
     });
 
     // 当窗口关闭时，清除引用
@@ -8240,7 +6644,6 @@ if (!gotTheLock) {
       clearLoadWatchdog();
       clearTimeout(showFallbackTimer);
       windowStatePersist.cleanup();
-      authCallbackRouter.markRendererUnavailable();
       isOpenSessionFromNotificationReady = false;
       mainWindow = null;
     });
@@ -8481,9 +6884,6 @@ if (!gotTheLock) {
       console.error('[HtmlPreviewServer] Failed to stop:', error);
     });
 
-    stopOpenClawTokenProxy();
-
-
     sqliteBackupManager?.stopPeriodicBackupLoop();
     libraryIndexService?.stop();
     libraryThumbnailRenderer.dispose();
@@ -8600,11 +7000,6 @@ if (!gotTheLock) {
     registerLibraryIpcHandlers({
       localStore: libraryLocalStore,
       indexService: libraryIndexService,
-      getServerApiBaseUrl,
-      fetchWithAuth: (url, options) => {
-        const { scopedFetch } = capturePublishingRequest();
-        return scopedFetch(url, options);
-      },
     });
     libraryIndexService.start();
 
@@ -8645,93 +7040,6 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
-    // Inject auth getters for lobsterai-server provider routing
-    // The getter proactively triggers a background token refresh when the
-    // accessToken is within 5 minutes of expiry, so that the SDK always
-    // gets a fresh token without blocking.
-
-    setAuthTokensGetter(() => {
-      const tokens = getAuthTokens();
-      if (!tokens) return null;
-      // Check if accessToken is close to expiry and trigger background refresh
-      try {
-        const payload = JSON.parse(
-          Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString(),
-        );
-        const expiresAt = payload.exp * 1000;
-        if (expiresAt - Date.now() < 5 * 60 * 1000) {
-          void authSessionManager.refresh(AuthRefreshReason.Proactive); // fire-and-forget
-        }
-      } catch {
-        /* unable to parse JWT, return token as-is */
-      }
-      return tokens;
-    });
-    setServerBaseUrlGetter(() => getServerApiBaseUrl());
-
-    // Initialize Copilot token manager and restore token state if available
-    initCopilotTokenManager(getStore);
-    const storedGithubToken = getStore().get('github_copilot_github_token') as string | undefined;
-    if (storedGithubToken) {
-      import('./libs/githubCopilotAuth')
-        .then(({ getCopilotToken }) =>
-          getCopilotToken(storedGithubToken).then(({ token, expiresAt, baseUrl }) => {
-            setCopilotTokenState({
-              copilotToken: token,
-              baseUrl,
-              expiresAt,
-              githubToken: storedGithubToken,
-            });
-            console.log('[Main] restored Copilot token state from stored GitHub token');
-          }),
-        )
-        .catch(err => {
-          console.warn('[Main] failed to restore Copilot token on startup:', err);
-        });
-    }
-
-    registerProxyTokenRefresher(ProviderName.EgoaiServer, async rejectedToken => {
-      const latestAccessToken = getAuthTokens()?.accessToken;
-      if (latestAccessToken && rejectedToken && latestAccessToken !== rejectedToken) {
-        return {
-          outcome: AuthRefreshOutcome.Success,
-          accessToken: latestAccessToken,
-        };
-      }
-      return authSessionManager.refresh(AuthRefreshReason.CompatProxy);
-    });
-
-    registerProxyTokenRefresher(ProviderName.Copilot, async () => {
-      try {
-        const { refreshCopilotTokenNow } = await import('./libs/copilotTokenManager');
-        const refreshed = await refreshCopilotTokenNow();
-        return {
-          outcome: AuthRefreshOutcome.Success,
-          accessToken: refreshed.copilotToken,
-        };
-      } catch (err) {
-        console.warn('[Auth] Copilot proxy token refresh failed:', err);
-        return { outcome: AuthRefreshOutcome.TransientFailure };
-      }
-    });
-
-    // Start the lightweight token proxy before OpenClaw config sync so that
-    // lobsterai-server provider can use the proxy URL in its config.
-    profiler.mark('openClawTokenProxy');
-    try {
-      await startOpenClawTokenProxy({
-        getAuthTokens,
-        refreshToken: reason => authSessionManager.refresh(reason),
-        getServerBaseUrl: getServerApiBaseUrl,
-        getSessionKey: getAuthSessionKey,
-        getClientVersion: () => app.getVersion(),
-      });
-      console.log('[Main] OpenClaw token proxy started');
-    } catch (err) {
-      console.warn('[Main] OpenClaw token proxy failed to start (non-fatal):', err);
-    }
-    profiler.measure('openClawTokenProxy');
-
 
     bindCoworkRuntimeForwarder();
     bindOpenClawStatusForwarder();
@@ -8749,23 +7057,6 @@ if (!gotTheLock) {
       console.error('Failed to start OpenAI compatibility proxy:', error);
     });
     profiler.measure('coworkOpenAICompatProxy');
-
-    // ── Pre-warm quota & model caches so provider resolution and config sync
-    // see real server data instead of empty defaults ──
-    if (getAuthTokens()) {
-      profiler.mark('startupCacheWarmup');
-      const warmupResult = await runStartupCacheWarmup({
-        serverBaseUrl: getServerApiBaseUrl(),
-        fetchWithAuth,
-        appendKeyfromQuery,
-        cachedSubscriptionStatus,
-        clientVersion: app.getVersion(),
-        t,
-      });
-      cachedSubscriptionStatus = warmupResult.subscriptionStatus;
-      cachedMediaGenerationEntitled = warmupResult.mediaGenerationEntitled;
-      profiler.measure('startupCacheWarmup');
-    }
 
     // Agent model migration — runs after cache warmup so resolveMatchedProvider
     // can match lobsterai-server models without falling back.
@@ -8821,12 +7112,6 @@ if (!gotTheLock) {
     // sees the loading UI within ~1-2 s instead of waiting for the full
     // skill bootstrap (~6-8 s previously).
     setContentSecurityPolicy();
-    registerVoiceInputPermissionHandler({
-      session: session.defaultSession,
-      getMainWindow: () => mainWindow,
-      isDev,
-      startUrl: process.env.ELECTRON_START_URL,
-    });
 
     profiler.mark('createWindow');
     console.log('[Main] initApp: creating window');
@@ -8915,13 +7200,6 @@ if (!gotTheLock) {
     profiler.measure('skillManager');
 
     console.log(profiler.summary());
-
-    // Windows/Linux cold start: parse deep link from process.argv.
-    // The router buffers it because the renderer is not ready yet after createWindow().
-    const coldStartDeepLink = process.argv.find(arg => arg.startsWith('egoai://'));
-    if (coldStartDeepLink) {
-      handleDeepLink(coldStartDeepLink);
-    }
 
     // Reconnect OpenClaw gateway WS after system wake from sleep/suspend
     powerMonitor.on('resume', () => {

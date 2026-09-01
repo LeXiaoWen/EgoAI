@@ -20,8 +20,6 @@ import {
   findKimiK3ReservedCustomParamKeys,
   ModelRuntimeProfileSource,
   OpenClawApi,
-  ProviderAuthType,
-  ProviderName,
   ProviderRegistry,
   resolveCodingPlanBaseUrl,
   resolveModelRuntimeProfile,
@@ -34,8 +32,6 @@ import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { decryptSecret, decryptWithPassword, EncryptedPayload, encryptWithPassword, PasswordEncryptedPayload } from '../services/encryption';
 import { i18nService, LanguageType } from '../services/i18n';
-import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
-import { clearPendingPublishingConversionAttribution } from '../services/publishingConversionAttribution';
 import { formatShortcutForDisplay, getShortcutConflictSignature, isTextEditingSafeShortcut, matchesShortcut } from '../services/shortcuts';
 import {
   type ThemeDefaultChangedDetail,
@@ -43,7 +39,6 @@ import {
   ThemeServiceEvent,
 } from '../services/theme';
 import { applyTypographyPreferences } from '../services/typography';
-import type { RootState } from '../store';
 import { selectCoworkConfig } from '../store/selectors/coworkSelectors';
 import { setAvailableModels } from '../store/slices/modelSlice';
 import type {
@@ -66,7 +61,7 @@ import EditIcon from './icons/EditIcon';
 import MessageCopyIcon from './icons/MessageCopyIcon';
 import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
-import PluginsSettings, { type PluginPendingChanges, type PluginsSettingsHandle } from './plugins/PluginsSettings';
+import PluginsSettings, { type PluginsSettingsHandle } from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
@@ -139,7 +134,6 @@ const normalizeProvidersForSettingsSave = (providers: ProvidersConfig): Provider
           ...providerConfig,
           enabled: providerConfig.enabled && hasValidAuth,
           apiFormat,
-          ...(providerKey === ProviderName.Copilot ? { apiKey: '' } : {}),
           baseUrl: resolveBaseUrl(providerKey as ProviderType, providerConfig.baseUrl, apiFormat),
         },
       ];
@@ -182,569 +176,6 @@ const SETTINGS_TAB_SHORTCUT_ACTIONS: Partial<Record<ShortcutAction, TabType>> = 
   [ShortcutAction.OpenSettingsAbout]: 'about',
 };
 
-const SettingsAnalyticsSource = {
-  AgentEngine: 'settings_agent_engine',
-  Appearance: 'settings_appearance',
-  Browser: 'settings_browser',
-  Dreaming: 'settings_dreaming',
-  General: 'settings_general',
-  Memory: 'settings_memory',
-  Model: 'settings_model',
-  Plugins: 'settings_plugins',
-  Shortcuts: 'settings_shortcuts',
-  About: 'settings_about',
-} as const;
-
-type SettingsAnalyticsValue = string | boolean | number;
-type ProviderAnalyticsKind = 'builtin' | 'custom' | 'local';
-
-type MemorySettingAnalyticsSummary = {
-  changedKeys: string;
-  embeddingEnabled: boolean;
-  embeddingProvider: string;
-  embeddingVectorWeight: number;
-  hasEmbeddingApiKey: boolean;
-  hasEmbeddingBaseUrl: boolean;
-  hasEmbeddingModel: boolean;
-  memoryEnabled: boolean;
-  memoryLlmJudgeEnabled: boolean;
-};
-
-type DreamingSettingAnalyticsSummary = {
-  changedKeys: string;
-  dreamingEnabled: boolean;
-  frequencyType: 'preset' | 'custom';
-};
-
-type ShortcutSettingAnalyticsSummary = {
-  changedCount: number;
-  configuredCount: number;
-  disabledCount: number;
-  resetToDefault: boolean;
-};
-
-type PluginSettingsAnalyticsSummary = {
-  changedKeys: string;
-  configCount: number;
-  disabledToggleCount: number;
-  enabledToggleCount: number;
-  toggleCount: number;
-};
-
-const DREAMING_FREQUENCY_PRESETS_FOR_ANALYTICS = new Set([
-  '0 3 * * *',
-  '0 0 * * *',
-  '0 0,12 * * *',
-  '0 */6 * * *',
-  '0 3 * * 0',
-]);
-
-type CustomModelSettingsAnalyticsSummary = {
-  changedKeys: string;
-  changedProviderCount: number;
-  customProviderCount: number;
-  customProviderModelCount: number;
-  enabledCustomProviderCount: number;
-  enabledProviderCount: number;
-  hasCodingPlanEnabled: boolean;
-  hasLocalProviderEnabled: boolean;
-  modelCount: number;
-};
-
-const isCustomProviderKey = (providerKey: string): boolean => (
-  (CUSTOM_PROVIDER_KEYS as readonly string[]).includes(providerKey)
-);
-
-const isLocalProviderKey = (providerKey: string): boolean => (
-  providerKey === ProviderName.Ollama || providerKey === ProviderName.LmStudio
-);
-
-const resolveProviderAnalyticsKind = (providerKey: string): ProviderAnalyticsKind => {
-  if (isCustomProviderKey(providerKey)) {
-    return 'custom';
-  }
-  if (isLocalProviderKey(providerKey)) {
-    return 'local';
-  }
-  return 'builtin';
-};
-
-const countProviderModels = (providerConfig?: ProviderConfig): number => (
-  Array.isArray(providerConfig?.models) ? providerConfig.models.length : 0
-);
-
-const sortAnalyticsObject = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(sortAnalyticsObject);
-  }
-  if (value && typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>)
-      .sort()
-      .reduce<Record<string, unknown>>((sorted, key) => {
-        sorted[key] = sortAnalyticsObject((value as Record<string, unknown>)[key]);
-        return sorted;
-      }, {});
-  }
-  return value;
-};
-
-const serializeProviderModelsForAnalyticsDiff = (providerConfig?: ProviderConfig): string => (
-  JSON.stringify((providerConfig?.models ?? []).map(model => ({
-    contextWindow: model.contextWindow,
-    customParams: sortAnalyticsObject(model.customParams),
-    id: model.id,
-    maxTokens: model.maxTokens,
-    name: model.name,
-    supportsImage: model.supportsImage === true,
-    supportsThinking: model.supportsThinking === true,
-    supportsVideo: model.supportsVideo === true,
-  })))
-);
-
-const getProviderAuthTypeForAnalytics = (providerConfig?: ProviderConfig): string => (
-  providerConfig?.authType || ProviderAuthType.ApiKey
-);
-
-const getProviderApiFormatForAnalytics = (providerKey: string, providerConfig?: ProviderConfig): string => (
-  getEffectiveApiFormat(providerKey, providerConfig?.apiFormat)
-);
-
-const buildCustomModelSettingsAnalyticsSummary = (
-  previousProviders: ProvidersConfig,
-  nextProviders: ProvidersConfig,
-): CustomModelSettingsAnalyticsSummary | null => {
-  const changedKeys = new Set<string>();
-  const changedProviders = new Set<string>();
-  const providerKeysForDiff = new Set([
-    ...Object.keys(previousProviders),
-    ...Object.keys(nextProviders),
-  ]);
-
-  providerKeysForDiff.forEach(providerKey => {
-    const previousProvider = previousProviders[providerKey];
-    const nextProvider = nextProviders[providerKey];
-
-    if (!previousProvider || !nextProvider) {
-      changedKeys.add('provider_count');
-      changedProviders.add(providerKey);
-      return;
-    }
-
-    let providerChanged = false;
-    if ((previousProvider.enabled === true) !== (nextProvider.enabled === true)) {
-      changedKeys.add('provider_enabled');
-      providerChanged = true;
-    }
-    if (getProviderApiFormatForAnalytics(providerKey, previousProvider) !== getProviderApiFormatForAnalytics(providerKey, nextProvider)) {
-      changedKeys.add('api_format');
-      providerChanged = true;
-    }
-    if (((previousProvider as ProviderConfig).codingPlanEnabled === true) !== ((nextProvider as ProviderConfig).codingPlanEnabled === true)) {
-      changedKeys.add('coding_plan');
-      providerChanged = true;
-    }
-    if (getProviderAuthTypeForAnalytics(previousProvider) !== getProviderAuthTypeForAnalytics(nextProvider)) {
-      changedKeys.add('auth_type');
-      providerChanged = true;
-    }
-    if (countProviderModels(previousProvider) !== countProviderModels(nextProvider)) {
-      changedKeys.add('model_count');
-      providerChanged = true;
-    }
-    if (serializeProviderModelsForAnalyticsDiff(previousProvider) !== serializeProviderModelsForAnalyticsDiff(nextProvider)) {
-      changedKeys.add('model_config');
-      providerChanged = true;
-    }
-
-    if (providerChanged) {
-      changedProviders.add(providerKey);
-    }
-  });
-
-  if (changedKeys.size === 0) {
-    return null;
-  }
-
-  const nextProviderEntries = Object.entries(nextProviders);
-  return {
-    changedKeys: Array.from(changedKeys).sort().join(','),
-    changedProviderCount: changedProviders.size,
-    customProviderCount: nextProviderEntries.filter(([providerKey]) => isCustomProviderKey(providerKey)).length,
-    customProviderModelCount: nextProviderEntries
-      .filter(([providerKey]) => isCustomProviderKey(providerKey))
-      .reduce((count, [, providerConfig]) => count + countProviderModels(providerConfig), 0),
-    enabledCustomProviderCount: nextProviderEntries
-      .filter(([providerKey, providerConfig]) => isCustomProviderKey(providerKey) && providerConfig.enabled === true)
-      .length,
-    enabledProviderCount: nextProviderEntries.filter(([, providerConfig]) => providerConfig.enabled === true).length,
-    hasCodingPlanEnabled: nextProviderEntries.some(([, providerConfig]) => (providerConfig as ProviderConfig).codingPlanEnabled === true),
-    hasLocalProviderEnabled: nextProviderEntries.some(([providerKey, providerConfig]) => (
-      isLocalProviderKey(providerKey) && providerConfig.enabled === true
-    )),
-    modelCount: nextProviderEntries.reduce((count, [, providerConfig]) => count + countProviderModels(providerConfig), 0),
-  };
-};
-
-const buildBrowserSettingAnalyticsParams = (
-  previousConfig: BrowserWebAccessConfig,
-  nextConfig: BrowserWebAccessConfig,
-): {
-  blockedHostnameCount: number;
-  changedKeys: string;
-  networkMode: string;
-  previousBlockedHostnameCount?: number;
-} | null => {
-  const changedKeys = new Set<string>();
-  if (previousConfig.networkMode !== nextConfig.networkMode) {
-    changedKeys.add('network_mode');
-  }
-  if (previousConfig.blockedHostnames.length !== nextConfig.blockedHostnames.length) {
-    changedKeys.add('blocked_hostnames');
-  }
-
-  if (changedKeys.size === 0) {
-    return null;
-  }
-
-  return {
-    blockedHostnameCount: nextConfig.blockedHostnames.length,
-    changedKeys: Array.from(changedKeys).sort().join(','),
-    networkMode: nextConfig.networkMode,
-    previousBlockedHostnameCount: previousConfig.blockedHostnames.length,
-  };
-};
-
-const buildMemorySettingAnalyticsSummary = (
-  previousConfig: {
-    embeddingEnabled: boolean;
-    embeddingModel: string;
-    embeddingProvider: string;
-    embeddingRemoteApiKey: string;
-    embeddingRemoteBaseUrl: string;
-    embeddingVectorWeight: number;
-    memoryEnabled: boolean;
-    memoryLlmJudgeEnabled: boolean;
-  },
-  nextConfig: {
-    embeddingEnabled: boolean;
-    embeddingModel: string;
-    embeddingProvider: string;
-    embeddingRemoteApiKey: string;
-    embeddingRemoteBaseUrl: string;
-    embeddingVectorWeight: number;
-    memoryEnabled: boolean;
-    memoryLlmJudgeEnabled: boolean;
-  },
-): MemorySettingAnalyticsSummary | null => {
-  const changedKeys = new Set<string>();
-  if (previousConfig.memoryEnabled !== nextConfig.memoryEnabled) {
-    changedKeys.add('memory_enabled');
-  }
-  if (previousConfig.memoryLlmJudgeEnabled !== nextConfig.memoryLlmJudgeEnabled) {
-    changedKeys.add('llm_judge_enabled');
-  }
-  if (previousConfig.embeddingEnabled !== nextConfig.embeddingEnabled) {
-    changedKeys.add('embedding_enabled');
-  }
-  if (previousConfig.embeddingProvider !== nextConfig.embeddingProvider) {
-    changedKeys.add('embedding_provider');
-  }
-  if (previousConfig.embeddingModel !== nextConfig.embeddingModel) {
-    changedKeys.add('embedding_model');
-  }
-  if (previousConfig.embeddingRemoteBaseUrl !== nextConfig.embeddingRemoteBaseUrl) {
-    changedKeys.add('embedding_base_url');
-  }
-  if (previousConfig.embeddingRemoteApiKey !== nextConfig.embeddingRemoteApiKey) {
-    changedKeys.add('embedding_api_key');
-  }
-  if (previousConfig.embeddingVectorWeight !== nextConfig.embeddingVectorWeight) {
-    changedKeys.add('embedding_vector_weight');
-  }
-
-  if (changedKeys.size === 0) {
-    return null;
-  }
-
-  return {
-    changedKeys: Array.from(changedKeys).sort().join(','),
-    embeddingEnabled: nextConfig.embeddingEnabled,
-    embeddingProvider: nextConfig.embeddingProvider,
-    embeddingVectorWeight: nextConfig.embeddingVectorWeight,
-    hasEmbeddingApiKey: nextConfig.embeddingRemoteApiKey.trim().length > 0,
-    hasEmbeddingBaseUrl: nextConfig.embeddingRemoteBaseUrl.trim().length > 0,
-    hasEmbeddingModel: nextConfig.embeddingModel.trim().length > 0,
-    memoryEnabled: nextConfig.memoryEnabled,
-    memoryLlmJudgeEnabled: nextConfig.memoryLlmJudgeEnabled,
-  };
-};
-
-const resolveDreamingFrequencyType = (frequency: string): 'preset' | 'custom' => (
-  DREAMING_FREQUENCY_PRESETS_FOR_ANALYTICS.has(frequency) ? 'preset' : 'custom'
-);
-
-const buildDreamingSettingAnalyticsSummary = (
-  previousConfig: {
-    dreamingEnabled: boolean;
-    dreamingFrequency: string;
-  },
-  nextConfig: {
-    dreamingEnabled: boolean;
-    dreamingFrequency: string;
-  },
-): DreamingSettingAnalyticsSummary | null => {
-  const changedKeys = new Set<string>();
-  if (previousConfig.dreamingEnabled !== nextConfig.dreamingEnabled) {
-    changedKeys.add('dreaming_enabled');
-  }
-  if (previousConfig.dreamingFrequency !== nextConfig.dreamingFrequency) {
-    changedKeys.add('dreaming_frequency');
-  }
-
-  if (changedKeys.size === 0) {
-    return null;
-  }
-
-  return {
-    changedKeys: Array.from(changedKeys).sort().join(','),
-    dreamingEnabled: nextConfig.dreamingEnabled,
-    frequencyType: resolveDreamingFrequencyType(nextConfig.dreamingFrequency),
-  };
-};
-
-const countConfiguredShortcuts = (shortcutConfig: ShortcutConfig): number => (
-  Object.values(shortcutConfig).filter(value => String(value || '').trim().length > 0).length
-);
-
-const buildShortcutSettingAnalyticsSummary = (
-  previousShortcuts: ShortcutConfig,
-  nextShortcuts: ShortcutConfig,
-): ShortcutSettingAnalyticsSummary | null => {
-  const keys = new Set([
-    ...Object.keys(previousShortcuts),
-    ...Object.keys(nextShortcuts),
-    ...Object.keys(defaultConfig.shortcuts || {}),
-  ]);
-  let changedCount = 0;
-  keys.forEach(key => {
-    if ((previousShortcuts[key as ShortcutAction] || '') !== (nextShortcuts[key as ShortcutAction] || '')) {
-      changedCount += 1;
-    }
-  });
-
-  if (changedCount === 0) {
-    return null;
-  }
-
-  const defaultShortcuts: ShortcutConfig = { ...defaultConfig.shortcuts! };
-  const resetToDefault = Array.from(keys).every(key => (
-    (nextShortcuts[key as ShortcutAction] || '') === (defaultShortcuts[key as ShortcutAction] || '')
-  ));
-
-  return {
-    changedCount,
-    configuredCount: countConfiguredShortcuts(nextShortcuts),
-    disabledCount: Array.from(keys).filter(key => !String(nextShortcuts[key as ShortcutAction] || '').trim()).length,
-    resetToDefault,
-  };
-};
-
-const buildPluginSettingsAnalyticsSummary = (
-  pendingChanges: PluginPendingChanges | null,
-): PluginSettingsAnalyticsSummary | null => {
-  if (!pendingChanges) {
-    return null;
-  }
-  const toggleCount = pendingChanges.toggles.length;
-  const configCount = pendingChanges.configs.length;
-  if (toggleCount === 0 && configCount === 0) {
-    return null;
-  }
-  const changedKeys = [
-    ...(toggleCount > 0 ? ['toggle'] : []),
-    ...(configCount > 0 ? ['config'] : []),
-  ].join(',');
-
-  return {
-    changedKeys,
-    configCount,
-    disabledToggleCount: pendingChanges.toggles.filter(change => !change.enabled).length,
-    enabledToggleCount: pendingChanges.toggles.filter(change => change.enabled).length,
-    toggleCount,
-  };
-};
-
-const reportGeneralSettingChanged = (
-  settingKey: string,
-  settingValue: SettingsAnalyticsValue,
-  previousValue?: SettingsAnalyticsValue,
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.GeneralSettingChanged,
-    settingKey,
-    settingValue,
-    previousValue,
-    source: SettingsAnalyticsSource.General,
-  });
-};
-
-const reportAppearanceSettingChanged = (
-  settingKey: string,
-  settingValue: SettingsAnalyticsValue,
-  previousValue?: SettingsAnalyticsValue,
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.AppearanceSettingChanged,
-    settingKey,
-    settingValue,
-    previousValue,
-    source: SettingsAnalyticsSource.Appearance,
-  });
-};
-
-const reportBrowserSettingChanged = (
-  params: {
-    blockedHostnameCount: number;
-    changedKeys: string;
-    networkMode: string;
-    previousBlockedHostnameCount?: number;
-  },
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.BrowserSettingChanged,
-    source: SettingsAnalyticsSource.Browser,
-    ...params,
-  });
-};
-
-const reportMemorySettingChanged = (
-  summary: MemorySettingAnalyticsSummary,
-): void => {
-  console.debug('[Settings] reporting memory setting analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.MemorySettingChanged,
-    source: SettingsAnalyticsSource.Memory,
-    ...summary,
-  });
-};
-
-const reportMemoryEntryChanged = (
-  operation: 'created' | 'updated' | 'deleted',
-  entryCount?: number,
-): void => {
-  console.debug('[Settings] reporting memory entry analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.MemoryEntryChanged,
-    source: SettingsAnalyticsSource.Memory,
-    operation,
-    entryCount,
-  });
-};
-
-const reportDreamingSettingChanged = (
-  summary: DreamingSettingAnalyticsSummary,
-): void => {
-  console.debug('[Settings] reporting dreaming setting analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.DreamingSettingChanged,
-    source: SettingsAnalyticsSource.Dreaming,
-    ...summary,
-  });
-};
-
-const reportPluginSettingsSaved = (
-  summary: PluginSettingsAnalyticsSummary,
-): void => {
-  console.debug('[Settings] reporting plugin settings analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.PluginSettingsSaved,
-    source: SettingsAnalyticsSource.Plugins,
-    ...summary,
-  });
-};
-
-const reportShortcutSettingChanged = (
-  summary: ShortcutSettingAnalyticsSummary,
-): void => {
-  console.debug('[Settings] reporting shortcut setting analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.ShortcutSettingChanged,
-    source: SettingsAnalyticsSource.Shortcuts,
-    ...summary,
-  });
-};
-
-const reportAboutAction = (
-  actionType: string,
-  result: string,
-  options: { missingEntryCount?: number } = {},
-): void => {
-  console.debug('[Settings] reporting about action analytics');
-  void reportYdAnalyzer({
-    action: LogReporterAction.AboutAction,
-    source: SettingsAnalyticsSource.About,
-    actionType,
-    result,
-    missingEntryCount: options.missingEntryCount,
-  });
-};
-
-const reportAgentEngineSettingChanged = (
-  settingKey: string,
-  settingValue: SettingsAnalyticsValue,
-  previousValue?: SettingsAnalyticsValue,
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.AgentEngineSettingChanged,
-    settingKey,
-    settingValue,
-    previousValue,
-    source: SettingsAnalyticsSource.AgentEngine,
-  });
-};
-
-const reportAgentEngineMaintenanceAction = (
-  actionType: string,
-  result: string,
-  options: { errorCode?: string; sizeBytes?: number } = {},
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.AgentEngineMaintenanceAction,
-    actionType,
-    result,
-    errorCode: options.errorCode,
-    sizeBytes: options.sizeBytes,
-    source: SettingsAnalyticsSource.AgentEngine,
-  });
-};
-
-const reportCustomModelSettingsSaved = (
-  summary: CustomModelSettingsAnalyticsSummary,
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.CustomModelSettingsSaved,
-    source: SettingsAnalyticsSource.Model,
-    ...summary,
-  });
-};
-
-const reportCustomModelConnectionTested = (
-  providerKey: ProviderType,
-  apiFormat: string,
-  result: 'success' | 'failed',
-  options: { failureReason?: string; statusCode?: number } = {},
-): void => {
-  void reportYdAnalyzer({
-    action: LogReporterAction.CustomModelConnectionTested,
-    source: SettingsAnalyticsSource.Model,
-    providerKey,
-    providerKind: resolveProviderAnalyticsKind(providerKey),
-    apiFormat,
-    result,
-    failureReason: options.failureReason,
-    statusCode: options.statusCode,
-  });
-};
 
 const AGENT_TASK_SLOT_COMMANDS: ShortcutCommandDefinition[] = [
   ShortcutAction.OpenAgentTask1,
@@ -956,41 +387,6 @@ const ABOUT_CONTACT_EMAIL = 'egoai@example.com';
 const ABOUT_USER_MANUAL_URL = '#';
 const ABOUT_USER_COMMUNITY_URL = '#';
 const ABOUT_SERVICE_TERMS_URL = '#';
-
-// MiniMax Portal OAuth constants
-const MINIMAX_OAUTH_CLIENT_ID = '78257093-7e40-4613-99e0-527b14b39113';
-const MINIMAX_OAUTH_SCOPE = 'group_id profile model.completion';
-const MINIMAX_OAUTH_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:user_code';
-const MINIMAX_BASE_URL_CN = 'https://api.minimaxi.com/anthropic';
-const MINIMAX_BASE_URL_GLOBAL = 'https://api.minimax.io/anthropic';
-const MINIMAX_CODE_ENDPOINT_CN = 'https://api.minimaxi.com/oauth/code';
-const MINIMAX_CODE_ENDPOINT_GLOBAL = 'https://api.minimax.io/oauth/code';
-const MINIMAX_TOKEN_ENDPOINT_CN = 'https://api.minimaxi.com/oauth/token';
-const MINIMAX_TOKEN_ENDPOINT_GLOBAL = 'https://api.minimax.io/oauth/token';
-
-type MiniMaxRegion = 'cn' | 'global';
-type MiniMaxOAuthPhase =
-  | { kind: 'idle' }
-  | { kind: 'requesting_code' }
-  | { kind: 'pending'; userCode: string; verificationUri: string }
-  | { kind: 'success' }
-  | { kind: 'error'; message: string };
-
-async function generateMiniMaxPkce(): Promise<{ verifier: string; challenge: string; state: string }> {
-  const verifierArray = new Uint8Array(32);
-  crypto.getRandomValues(verifierArray);
-  const verifier = btoa(String.fromCharCode(...verifierArray))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const encoded = new TextEncoder().encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', encoded);
-  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const stateArray = new Uint8Array(16);
-  crypto.getRandomValues(stateArray);
-  const state = btoa(String.fromCharCode(...stateArray))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  return { verifier, challenge, state };
-}
 
 const copyTextFallback = (text: string): boolean => {
   const textarea = document.createElement('textarea');
@@ -1450,49 +846,11 @@ const Settings: React.FC<SettingsProps> = ({
   const [activeProvider, setActiveProvider] = useState<ProviderType>(getDefaultActiveProvider());
   const [showApiKey, setShowApiKey] = useState(false);
 
-  // MiniMax OAuth state
-  const [minimaxOAuthPhase, setMinimaxOAuthPhase] = useState<MiniMaxOAuthPhase>({ kind: 'idle' });
-  const [minimaxOAuthRegion, setMinimaxOAuthRegion] = useState<MiniMaxRegion>('cn');
-  const minimaxOAuthCancelRef = useRef(false);
-
-  // OpenAI ChatGPT (Codex) OAuth state
-  type OpenAIOAuthPhase =
-    | { kind: 'idle' }
-    | { kind: 'pending' }
-    | { kind: 'success'; email?: string }
-    | { kind: 'error'; message: string };
-  const [openaiOAuthPhase, setOpenaiOAuthPhase] = useState<OpenAIOAuthPhase>({ kind: 'idle' });
-  // Mirrors <CODEX_HOME>/auth.json on disk; refreshed on tab focus and after
-  // login/logout. `null` = not yet checked.
-  const [openaiOAuthStatus, setOpenaiOAuthStatus] = useState<
-    { loggedIn: false } | { loggedIn: true; email?: string } | null
-  >(null);
-
-  // xAI (Grok) OAuth state
-  type XaiOAuthPhase =
-    | { kind: 'idle' }
-    | { kind: 'pending' }
-    | { kind: 'device_code'; userCode: string; verificationUri: string }
-    | { kind: 'success'; email?: string }
-    | { kind: 'error'; message: string };
-  const [xaiOAuthPhase, setXaiOAuthPhase] = useState<XaiOAuthPhase>({ kind: 'idle' });
-  // Mirrors the OpenClaw auth-profiles store on disk; refreshed whenever the
-  // xAI provider tab becomes active and after login/logout. `null` = not yet checked.
-  const [xaiOAuthStatus, setXaiOAuthStatus] = useState<
-    { loggedIn: false } | { loggedIn: true; email?: string } | null
-  >(null);
-
   // Add state for providers configuration
   const [providers, setProviders] = useState<ProvidersConfig>(() => getDefaultProviders());
 
 
-  // authType defaults to undefined on first open, which should behave as OAuth mode
-  const minimaxIsOAuthMode = providers.minimax.authType !== 'apikey';
-  // OpenAI defaults to API key mode unless the user explicitly opts in to OAuth
-  const openaiIsOAuthMode = providers.openai.authType === 'oauth';
-  // xAI likewise defaults to API key mode; OAuth is an explicit opt-in
-  const xaiIsOAuthMode = providers.xai.authType === 'oauth';
-  const isBaseUrlLocked = (activeProvider === 'zhipu' && providers.zhipu.codingPlanEnabled) || (activeProvider === 'qwen' && providers.qwen.codingPlanEnabled) || (activeProvider === 'volcengine' && providers.volcengine.codingPlanEnabled) || (activeProvider === 'moonshot' && providers.moonshot.codingPlanEnabled) || (activeProvider === 'qianfan' && providers.qianfan.codingPlanEnabled) || (activeProvider === 'xiaomi' && providers.xiaomi.codingPlanEnabled) || (activeProvider === 'minimax' && minimaxIsOAuthMode) || (activeProvider === 'openai' && openaiIsOAuthMode) || (activeProvider === 'xai' && xaiIsOAuthMode);
+  const isBaseUrlLocked = Boolean((activeProvider === 'zhipu' && providers.zhipu.codingPlanEnabled) || (activeProvider === 'qwen' && providers.qwen.codingPlanEnabled) || (activeProvider === 'volcengine' && providers.volcengine.codingPlanEnabled) || (activeProvider === 'moonshot' && providers.moonshot.codingPlanEnabled) || (activeProvider === 'qianfan' && providers.qianfan.codingPlanEnabled) || (activeProvider === 'xiaomi' && providers.xiaomi.codingPlanEnabled));
 
   // 创建引用来确保内容区域的滚动
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1506,13 +864,6 @@ const Settings: React.FC<SettingsProps> = ({
   // 快捷键设置
   const [shortcuts, setShortcuts] = useState<ShortcutConfig>(() => ({ ...defaultConfig.shortcuts! }));
   const [shortcutSearchQuery, setShortcutSearchQuery] = useState('');
-
-  // GitHub Copilot device code auth state
-  const [copilotAuthStatus, setCopilotAuthStatus] = useState<'idle' | 'requesting' | 'awaiting_user' | 'polling' | 'authenticated' | 'error'>('idle');
-  const [copilotUserCode, setCopilotUserCode] = useState('');
-  const [copilotVerificationUri, setCopilotVerificationUri] = useState('');
-  const [copilotGithubUser, setCopilotGithubUser] = useState('');
-  const [copilotError, setCopilotError] = useState<string | null>(null);
 
   // State for model editing
   const [isAddingModel, setIsAddingModel] = useState(false);
@@ -1583,7 +934,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleCopyContactEmail = useCallback(async () => {
     const copied = await copyTextToClipboard(ABOUT_CONTACT_EMAIL);
-    reportAboutAction('copy_contact_email', copied ? 'success' : 'failed');
+    
     if (copied) {
       setEmailCopied(true);
       if (emailCopiedTimerRef.current != null) {
@@ -1596,20 +947,18 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, []);
 
-  const authUser = useSelector((state: RootState) => state.auth.user);
-
   const handleCheckUpdate = useCallback(async () => {
     if (updateCheckStatus === 'checking' || !appVersion) return;
     setUpdateCheckStatus('checking');
     try {
-      const result = await window.electron.appUpdate.checkNow({ manual: true, userId: authUser?.yid });
+      const result = await window.electron.appUpdate.checkNow({ manual: true });
       if (!result.success) {
         throw new Error(result.error || 'Update check failed');
       }
 
       if (!result.updateFound) {
         setUpdateCheckStatus('upToDate');
-        reportAboutAction('check_update', 'up_to_date');
+        
         if (updateCheckTimerRef.current != null) {
           window.clearTimeout(updateCheckTimerRef.current);
         }
@@ -1622,20 +971,20 @@ const Settings: React.FC<SettingsProps> = ({
 
       if (result.state.status === AppUpdateStatus.Ready) {
         setUpdateCheckStatus('ready');
-        reportAboutAction('check_update', 'ready');
+        
       } else if (result.state.status === AppUpdateStatus.Downloading) {
         setUpdateCheckStatus('downloading');
-        reportAboutAction('check_update', 'downloading');
+        
       } else {
         setUpdateCheckStatus('idle');
-        reportAboutAction('check_update', 'update_found');
+        
       }
 
       if (result.state.info) {
         onUpdateFound?.(result.state.info);
       }
     } catch {
-      reportAboutAction('check_update', 'failed');
+      
       setUpdateCheckStatus('error');
       if (updateCheckTimerRef.current != null) {
         window.clearTimeout(updateCheckTimerRef.current);
@@ -1645,7 +994,7 @@ const Settings: React.FC<SettingsProps> = ({
         updateCheckTimerRef.current = null;
       }, 3000);
     }
-  }, [appVersion, authUser, updateCheckStatus, onUpdateFound]);
+  }, [appVersion, updateCheckStatus, onUpdateFound]);
 
   const updateButtonLabel = useMemo(() => {
     if (
@@ -1664,17 +1013,17 @@ const Settings: React.FC<SettingsProps> = ({
   }, [appUpdateState?.progress?.percent, updateCheckStatus]);
 
   const handleOpenUserManual = useCallback(() => {
-    reportAboutAction('open_user_manual', 'success');
+    
     void window.electron.shell.openExternal(ABOUT_USER_MANUAL_URL);
   }, []);
 
   const handleOpenUserCommunity = useCallback(() => {
-    reportAboutAction('open_user_community', 'success');
+    
     void window.electron.shell.openExternal(ABOUT_USER_COMMUNITY_URL);
   }, []);
 
   const handleOpenServiceTerms = useCallback(() => {
-    reportAboutAction('open_service_terms', 'success');
+    
     void window.electron.shell.openExternal(ABOUT_SERVICE_TERMS_URL);
   }, []);
 
@@ -1690,11 +1039,11 @@ const Settings: React.FC<SettingsProps> = ({
       const result = await window.electron.log.exportZip();
       if (!result.success) {
         setError(result.error || i18nService.t('aboutExportLogsFailed'));
-        reportAboutAction('export_logs', 'failed');
+        
         return;
       }
       if (result.canceled) {
-        reportAboutAction('export_logs', 'canceled');
+        
         return;
       }
 
@@ -1708,12 +1057,10 @@ const Settings: React.FC<SettingsProps> = ({
       } else {
         setNoticeMessage(i18nService.t('aboutExportLogsSuccess'));
       }
-      reportAboutAction('export_logs', 'success', {
-        missingEntryCount: result.missingEntries?.length ?? 0,
-      });
+      
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : i18nService.t('aboutExportLogsFailed'));
-      reportAboutAction('export_logs', 'failed');
+      
     } finally {
       setIsExportingLogs(false);
     }
@@ -2171,7 +1518,7 @@ const Settings: React.FC<SettingsProps> = ({
             Object.entries(merged).map(([providerKey, providerConfig]) => {
               const models = providerConfig.models?.map((model, idx) => {
                 let id = model.id;
-                // Fix corrupted model IDs from previous OAuth mutation bug
+                // Fix corrupted model IDs from legacy provider config
                 if (providerKey === 'qwen' && (id === 'vision-model' || id === 'coder-model')) {
                   const defaultModel = defaultConfig.providers?.qwen?.models?.[idx];
                   id = defaultModel?.id || 'qwen3.5-plus';
@@ -2191,9 +1538,6 @@ const Settings: React.FC<SettingsProps> = ({
                 {
                   ...providerConfig,
                   apiFormat: getEffectiveApiFormat(providerKey, (providerConfig as ProviderConfig).apiFormat),
-                  ...(providerKey === ProviderName.Copilot && providerConfig.apiKey?.trim()
-                    ? { authType: ProviderAuthType.OAuth, apiKey: '' }
-                    : {}),
                   models,
                 },
               ];
@@ -2376,15 +1720,6 @@ const Settings: React.FC<SettingsProps> = ({
     delete updatedProviders[key];
     try {
       await configService.updateConfig({ providers: updatedProviders as AppConfig['providers'] });
-      if (usageAnalyticsEnabled) {
-        const customModelSettingsSummary = buildCustomModelSettingsAnalyticsSummary(
-          (currentConfig.providers ?? providers) as ProvidersConfig,
-          updatedProviders as ProvidersConfig,
-        );
-        if (customModelSettingsSummary) {
-          reportCustomModelSettingsSaved(customModelSettingsSummary);
-        }
-      }
     } catch (deleteError) {
       console.warn('[Settings] failed to persist custom provider deletion:', deleteError);
     }
@@ -2458,360 +1793,7 @@ const Settings: React.FC<SettingsProps> = ({
     });
   };
 
-  const handleMiniMaxDeviceLogin = async (region: MiniMaxRegion) => {
-    minimaxOAuthCancelRef.current = false;
-    setMinimaxOAuthPhase({ kind: 'requesting_code' });
 
-    const codeEndpoint = region === 'cn' ? MINIMAX_CODE_ENDPOINT_CN : MINIMAX_CODE_ENDPOINT_GLOBAL;
-    const tokenEndpoint = region === 'cn' ? MINIMAX_TOKEN_ENDPOINT_CN : MINIMAX_TOKEN_ENDPOINT_GLOBAL;
-    const defaultBaseUrl = region === 'cn' ? MINIMAX_BASE_URL_CN : MINIMAX_BASE_URL_GLOBAL;
-
-    try {
-      const { verifier, challenge, state } = await generateMiniMaxPkce();
-
-      const codeBody = [
-        'response_type=code',
-        `client_id=${encodeURIComponent(MINIMAX_OAUTH_CLIENT_ID)}`,
-        `scope=${encodeURIComponent(MINIMAX_OAUTH_SCOPE)}`,
-        `code_challenge=${encodeURIComponent(challenge)}`,
-        'code_challenge_method=S256',
-        `state=${encodeURIComponent(state)}`,
-      ].join('&');
-
-      const codeRes = await window.electron.api.fetch({
-        url: codeEndpoint,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        body: codeBody,
-      });
-
-      if (!codeRes.ok) {
-        throw new Error(`MiniMax OAuth authorization failed: ${codeRes.status}`);
-      }
-
-      const codePayload = (codeRes.data ?? {}) as {
-        user_code?: string;
-        verification_uri?: string;
-        expired_in?: number;
-        interval?: number;
-        state?: string;
-        error?: string;
-      };
-
-      if (!codePayload.user_code || !codePayload.verification_uri) {
-        throw new Error(codePayload.error ?? 'MiniMax OAuth returned incomplete authorization payload');
-      }
-
-      if (codePayload.state !== state) {
-        throw new Error('MiniMax OAuth state mismatch: possible CSRF attack or session corruption');
-      }
-
-      try {
-        await window.electron.shell.openExternal(codePayload.verification_uri);
-      } catch { /* ignore: user can open manually */ }
-
-      setMinimaxOAuthPhase({
-        kind: 'pending',
-        userCode: codePayload.user_code,
-        verificationUri: codePayload.verification_uri,
-      });
-
-      let pollIntervalMs = codePayload.interval ?? 2000;
-      const expireTimeMs = codePayload.expired_in ?? (Date.now() + 5 * 60 * 1000);
-
-      while (Date.now() < expireTimeMs) {
-        if (minimaxOAuthCancelRef.current) {
-          setMinimaxOAuthPhase({ kind: 'idle' });
-          return;
-        }
-
-        await new Promise(r => setTimeout(r, pollIntervalMs));
-
-        if (minimaxOAuthCancelRef.current) {
-          setMinimaxOAuthPhase({ kind: 'idle' });
-          return;
-        }
-
-        const tokenBody = [
-          `grant_type=${encodeURIComponent(MINIMAX_OAUTH_GRANT_TYPE)}`,
-          `client_id=${encodeURIComponent(MINIMAX_OAUTH_CLIENT_ID)}`,
-          `user_code=${encodeURIComponent(codePayload.user_code)}`,
-          `code_verifier=${encodeURIComponent(verifier)}`,
-        ].join('&');
-
-        const tokenRes = await window.electron.api.fetch({
-          url: tokenEndpoint,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: tokenBody,
-        });
-
-        const tokenPayload = (tokenRes.data ?? {}) as {
-          status?: string;
-          access_token?: string;
-          refresh_token?: string;
-          expired_in?: number;
-          resource_url?: string;
-          notification_message?: string;
-          base_resp?: { status_code?: number; status_msg?: string };
-        };
-
-        if (tokenPayload.status === 'error') {
-          throw new Error(tokenPayload.base_resp?.status_msg ?? 'MiniMax OAuth error');
-        }
-
-        if (tokenPayload.status === 'success') {
-          if (!tokenPayload.access_token || !tokenPayload.refresh_token) {
-            throw new Error('MiniMax OAuth returned incomplete token payload');
-          }
-
-          let baseUrl = (tokenPayload.resource_url ?? '').trim();
-          if (baseUrl && !baseUrl.startsWith('http')) {
-            baseUrl = `https://${baseUrl}`;
-          }
-          if (!baseUrl) {
-            baseUrl = defaultBaseUrl;
-          }
-
-          setProviders(prev => ({
-            ...prev,
-            minimax: {
-              ...prev.minimax,
-              enabled: true,
-              oauthAccessToken: tokenPayload.access_token!,
-              oauthBaseUrl: baseUrl,
-              apiFormat: 'anthropic',
-              authType: 'oauth',
-              oauthRefreshToken: tokenPayload.refresh_token,
-              oauthTokenExpiresAt: tokenPayload.expired_in,
-              models: [...(defaultConfig.providers?.minimax.models ?? [])],
-            },
-          }));
-
-          setMinimaxOAuthPhase({ kind: 'success' });
-          setTimeout(() => setMinimaxOAuthPhase({ kind: 'idle' }), 1500);
-          return;
-        }
-
-        // Still pending — back off gradually
-        pollIntervalMs = Math.min(pollIntervalMs * 1.5, 10000);
-      }
-
-      throw new Error('MiniMax OAuth timed out waiting for authorization');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setMinimaxOAuthPhase({ kind: 'error', message });
-    }
-  };
-
-  const handleCancelMiniMaxLogin = () => {
-    minimaxOAuthCancelRef.current = true;
-    setMinimaxOAuthPhase({ kind: 'idle' });
-  };
-
-  const handleMiniMaxOAuthLogout = () => {
-    setProviders(prev => ({
-      ...prev,
-      minimax: {
-        ...prev.minimax,
-        enabled: false,
-        oauthAccessToken: undefined,
-        oauthBaseUrl: undefined,
-        oauthRefreshToken: undefined,
-        oauthTokenExpiresAt: undefined,
-      },
-    }));
-    setMinimaxOAuthPhase({ kind: 'idle' });
-  };
-
-  // Sync the persisted ChatGPT login state into local UI state on mount and
-  // whenever the OpenAI provider tab becomes active. Also reconciles stale
-  // providers config (e.g. auth.json deleted externally).
-  useEffect(() => {
-    let cancelled = false;
-    if (activeProvider !== 'openai') return;
-    void window.electron.openaiCodexOAuth.status().then((status) => {
-      if (cancelled) return;
-      if (status.loggedIn) {
-        setOpenaiOAuthStatus({ loggedIn: true, email: status.email ?? undefined });
-      } else {
-        setOpenaiOAuthStatus({ loggedIn: false });
-        setProviders(prev => {
-          if (prev.openai.authType !== 'oauth') return prev;
-          return { ...prev, openai: { ...prev.openai, authType: 'apikey' } };
-        });
-      }
-    }).catch(() => {
-      if (!cancelled) setOpenaiOAuthStatus({ loggedIn: false });
-    });
-    return () => { cancelled = true; };
-  }, [activeProvider]);
-
-  const persistProviderAuthConfigInBackground = useCallback((nextProviders: ProvidersConfig) => {
-    void configService.updateConfig({ providers: nextProviders }).catch((saveError) => {
-      console.error('[Settings] failed to save provider auth state:', saveError);
-      setError(i18nService.t('failedToSaveSettings'));
-    });
-  }, []);
-
-  const handleOpenAIOAuthLogin = async () => {
-    setOpenaiOAuthPhase({ kind: 'pending' });
-    try {
-      const result = await window.electron.openaiCodexOAuth.start();
-      if (!result.success) {
-        setOpenaiOAuthPhase({ kind: 'error', message: result.error });
-        return;
-      }
-      const nextProviders: ProvidersConfig = {
-        ...providers,
-        openai: {
-          ...providers.openai,
-          enabled: true,
-          authType: 'oauth',
-        },
-      };
-      setProviders(nextProviders);
-      setOpenaiOAuthStatus({ loggedIn: true, email: result.email ?? undefined });
-      setOpenaiOAuthPhase({ kind: 'success', email: result.email ?? undefined });
-      persistProviderAuthConfigInBackground(nextProviders);
-      setTimeout(() => setOpenaiOAuthPhase({ kind: 'idle' }), 1500);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setOpenaiOAuthPhase({ kind: 'error', message });
-    }
-  };
-
-  const handleCancelOpenAIOAuthLogin = async () => {
-    try {
-      await window.electron.openaiCodexOAuth.cancel();
-    } catch {
-      /* ignore — we still want to reset the UI */
-    }
-    setOpenaiOAuthPhase({ kind: 'idle' });
-  };
-
-  const handleOpenAIOAuthLogout = async () => {
-    const nextOpenAIProvider = {
-      ...providers.openai,
-      enabled: providers.openai.apiKey.trim().length > 0,
-      authType: 'apikey' as const,
-    };
-    const nextProviders: ProvidersConfig = {
-      ...providers,
-      openai: {
-        ...nextOpenAIProvider,
-      },
-    };
-    setProviders(nextProviders);
-    setOpenaiOAuthStatus({ loggedIn: false });
-    setOpenaiOAuthPhase({ kind: 'idle' });
-    persistProviderAuthConfigInBackground(nextProviders);
-    try {
-      await window.electron.openaiCodexOAuth.logout();
-    } catch {
-      /* ignore — file may already be gone */
-    }
-  };
-
-  // Sync the persisted xAI login state (OpenClaw auth-profiles store) into
-  // local UI state whenever the xAI provider tab becomes active. Also
-  // reconciles stale providers config (e.g. credential removed externally).
-  useEffect(() => {
-    let cancelled = false;
-    if (activeProvider !== 'xai') return;
-    void window.electron.xaiOAuth.status().then((status) => {
-      if (cancelled) return;
-      if (status.loggedIn) {
-        setXaiOAuthStatus({ loggedIn: true, email: status.email });
-      } else {
-        setXaiOAuthStatus({ loggedIn: false });
-        setProviders(prev => {
-          if (prev.xai.authType !== 'oauth') return prev;
-          return { ...prev, xai: { ...prev.xai, authType: 'apikey' } };
-        });
-      }
-    }).catch(() => {
-      if (!cancelled) setXaiOAuthStatus({ loggedIn: false });
-    });
-    return () => { cancelled = true; };
-  }, [activeProvider]);
-
-  const handleXaiOAuthLogin = async () => {
-    setXaiOAuthPhase({ kind: 'pending' });
-    // The main process falls back to the device-code flow when the loopback
-    // callback port is taken — surface the user code as soon as it arrives.
-    const unsubscribeDeviceCode = window.electron.xaiOAuth.onDeviceCode((info) => {
-      setXaiOAuthPhase({
-        kind: 'device_code',
-        userCode: info.userCode,
-        verificationUri: info.verificationUriComplete ?? info.verificationUri,
-      });
-    });
-    try {
-      const result = await window.electron.xaiOAuth.start();
-      if (!result.success) {
-        if (/cancelled/i.test(result.error)) {
-          setXaiOAuthPhase({ kind: 'idle' });
-        } else {
-          setXaiOAuthPhase({ kind: 'error', message: result.error });
-        }
-        return;
-      }
-      const nextProviders: ProvidersConfig = {
-        ...providers,
-        xai: {
-          ...providers.xai,
-          enabled: true,
-          authType: 'oauth',
-        },
-      };
-      setProviders(nextProviders);
-      setXaiOAuthStatus({ loggedIn: true, email: result.email ?? undefined });
-      setXaiOAuthPhase({ kind: 'success', email: result.email ?? undefined });
-      persistProviderAuthConfigInBackground(nextProviders);
-      setTimeout(() => setXaiOAuthPhase({ kind: 'idle' }), 1500);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setXaiOAuthPhase({ kind: 'error', message });
-    } finally {
-      unsubscribeDeviceCode();
-    }
-  };
-
-  const handleCancelXaiOAuthLogin = async () => {
-    try {
-      await window.electron.xaiOAuth.cancel();
-    } catch {
-      /* ignore — we still want to reset the UI */
-    }
-    setXaiOAuthPhase({ kind: 'idle' });
-  };
-
-  const handleXaiOAuthLogout = async () => {
-    const nextProviders: ProvidersConfig = {
-      ...providers,
-      xai: {
-        ...providers.xai,
-        enabled: providers.xai.apiKey.trim().length > 0,
-        authType: 'apikey' as const,
-      },
-    };
-    setProviders(nextProviders);
-    setXaiOAuthStatus({ loggedIn: false });
-    setXaiOAuthPhase({ kind: 'idle' });
-    persistProviderAuthConfigInBackground(nextProviders);
-    try {
-      await window.electron.xaiOAuth.logout();
-    } catch {
-      /* ignore — credential may already be gone */
-    }
-  };
 
   const hasCoworkConfigChanges = coworkAgentEngine !== coworkConfig.agentEngine
     || coworkMemoryEnabled !== coworkConfig.memoryEnabled
@@ -2967,17 +1949,13 @@ const Settings: React.FC<SettingsProps> = ({
     try {
       const result = await coworkService.repairOpenClawGatewayState();
       setOpenClawRepairResult(result);
-      reportAgentEngineMaintenanceAction(
-        'repair_gateway_state',
-        result.success ? 'success' : 'failed',
-        result.success ? {} : { errorCode: result.errorCode ?? 'unknown' },
-      );
+      
     } catch (repairError) {
       setOpenClawRepairResult({
         success: false,
         error: repairError instanceof Error ? repairError.message : i18nService.t('openClawRepairFailed'),
       });
-      reportAgentEngineMaintenanceAction('repair_gateway_state', 'failed', { errorCode: 'unknown' });
+      
     } finally {
       setIsRepairingOpenClaw(false);
     }
@@ -3033,7 +2011,7 @@ const Settings: React.FC<SettingsProps> = ({
       const result = await window.electron.openclaw.dataMigration.backup();
       if (!result.success) {
         setError(result.error || i18nService.t('openClawDataBackupFailed'));
-        reportAgentEngineMaintenanceAction('backup_data', 'failed', { errorCode: 'unknown' });
+        
         return;
       }
       if (result.canceled) {
@@ -3043,12 +2021,10 @@ const Settings: React.FC<SettingsProps> = ({
         setOpenClawDataBackupResult({ path: result.path, sizeBytes: result.sizeBytes });
       }
       setNoticeMessage(i18nService.t('openClawDataBackupSuccess'));
-      reportAgentEngineMaintenanceAction('backup_data', 'success', {
-        sizeBytes: result.sizeBytes,
-      });
+      
     } catch (backupError) {
       setError(backupError instanceof Error ? backupError.message : i18nService.t('openClawDataBackupFailed'));
-      reportAgentEngineMaintenanceAction('backup_data', 'failed', { errorCode: 'unknown' });
+      
     } finally {
       setIsBackingUpOpenClawData(false);
     }
@@ -3066,7 +2042,7 @@ const Settings: React.FC<SettingsProps> = ({
       const result = await window.electron.openclaw.dataMigration.restore();
       if (!result.success) {
         setError(result.error || i18nService.t('openClawDataMigrationFailed'));
-        reportAgentEngineMaintenanceAction('restore_data', 'failed', { errorCode: 'unknown' });
+        
         return;
       }
       if (result.canceled) {
@@ -3076,10 +2052,10 @@ const Settings: React.FC<SettingsProps> = ({
         keepLoadingUntilRestart = true;
         setNoticeMessage(i18nService.t('openClawDataMigrationRestarting'));
       }
-      reportAgentEngineMaintenanceAction('restore_data', 'success');
+      
     } catch (restoreError) {
       setError(restoreError instanceof Error ? restoreError.message : i18nService.t('openClawDataMigrationFailed'));
-      reportAgentEngineMaintenanceAction('restore_data', 'failed', { errorCode: 'unknown' });
+      
     } finally {
       if (!keepLoadingUntilRestart) {
         setIsRestoringOpenClawData(false);
@@ -3126,7 +2102,6 @@ const Settings: React.FC<SettingsProps> = ({
 
     setCoworkMemoryListLoading(true);
     try {
-      const operation = coworkMemoryEditingId ? 'updated' : 'created';
       if (coworkMemoryEditingId) {
         await coworkService.updateMemoryEntry({
           id: coworkMemoryEditingId,
@@ -3139,12 +2114,7 @@ const Settings: React.FC<SettingsProps> = ({
       }
       resetCoworkMemoryEditor();
       await loadCoworkMemoryData();
-      reportMemoryEntryChanged(
-        operation,
-        operation === 'created'
-          ? (coworkMemoryStats?.total ?? coworkMemoryEntries.length) + 1
-          : coworkMemoryStats?.total,
-      );
+      
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : i18nService.t('coworkMemoryCrudSaveFailed'));
     } finally {
@@ -3166,10 +2136,7 @@ const Settings: React.FC<SettingsProps> = ({
         resetCoworkMemoryEditor();
       }
       await loadCoworkMemoryData();
-      reportMemoryEntryChanged(
-        'deleted',
-        Math.max(0, (coworkMemoryStats?.total ?? coworkMemoryEntries.length) - 1),
-      );
+      
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : i18nService.t('coworkMemoryCrudDeleteFailed'));
     } finally {
@@ -3228,12 +2195,6 @@ const Settings: React.FC<SettingsProps> = ({
     const isEnabling = !providerConfig.enabled;
     const hasValidAuth = hasProviderAuthConfigured(provider, providerConfig);
 
-    // GitHub Copilot requires device code auth — redirect to sign-in flow
-    if (provider === ProviderName.Copilot && isEnabling && !hasValidAuth) {
-      handleCopilotSignIn();
-      return;
-    }
-
     if (isEnabling && !hasValidAuth) {
       setError(i18nService.t('apiKeyRequired'));
       return;
@@ -3264,87 +2225,6 @@ const Settings: React.FC<SettingsProps> = ({
     });
   };
 
-  // GitHub Copilot device code authentication
-  const handleCopilotSignIn = async () => {
-    try {
-      setCopilotAuthStatus('requesting');
-      setCopilotError(null);
-
-      // Step 1: Request device code
-      const { userCode, verificationUri, deviceCode, interval, expiresIn } =
-        await window.electron.githubCopilot.requestDeviceCode();
-
-      setCopilotUserCode(userCode);
-      setCopilotVerificationUri(verificationUri);
-      setCopilotAuthStatus('awaiting_user');
-
-      // Open verification URL in browser
-      await window.electron.shell.openExternal(verificationUri);
-
-      // Step 2: Poll for token
-      setCopilotAuthStatus('polling');
-      const result = await window.electron.githubCopilot.pollForToken(deviceCode, interval, expiresIn);
-
-      if (result.success && result.token) {
-        setCopilotGithubUser(result.githubUser || '');
-        setCopilotAuthStatus('authenticated');
-
-        apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
-          apiKey: result.token,
-          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-        });
-        setProviders(prev => ({
-          ...prev,
-          [ProviderName.Copilot]: {
-            ...prev[ProviderName.Copilot],
-            enabled: true,
-            authType: ProviderAuthType.OAuth,
-            apiKey: '',
-          },
-        }));
-      } else {
-        setCopilotError(result.error || 'Authentication failed');
-        setCopilotAuthStatus('error');
-      }
-    } catch (error: unknown) {
-      setCopilotError(error instanceof Error ? error.message : 'Authentication failed');
-      setCopilotAuthStatus('error');
-    }
-  };
-
-  const handleCopilotSignOut = async () => {
-    try {
-      await window.electron.githubCopilot.signOut();
-      setCopilotAuthStatus('idle');
-      setCopilotGithubUser('');
-      setCopilotUserCode('');
-      setCopilotError(null);
-      apiService.setProviderRuntimeCredential(ProviderName.Copilot, null);
-      setProviders(prev => ({
-        ...prev,
-        [ProviderName.Copilot]: {
-          ...prev[ProviderName.Copilot],
-          enabled: false,
-          authType: ProviderAuthType.ApiKey,
-          apiKey: '',
-        },
-      }));
-    } catch (error) {
-      console.error('[Settings] GitHub Copilot sign-out failed:', error);
-    }
-  };
-
-  const handleCopilotCancelAuth = async () => {
-    try {
-      await window.electron.githubCopilot.cancelPolling();
-      setCopilotAuthStatus('idle');
-      setCopilotUserCode('');
-      setCopilotError(null);
-    } catch (error) {
-      console.error('[Settings] GitHub Copilot cancel polling failed:', error);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSaving || isAppearanceChanging) return;
@@ -3369,68 +2249,6 @@ const Settings: React.FC<SettingsProps> = ({
         webFetch: defaultBrowserWebAccessConfig.webFetch,
       });
       const previousConfig = configService.getConfig();
-      const previousBrowserWebAccess = normalizeBrowserWebAccessConfig(previousConfig.browserWebAccess);
-      const previousShortcuts: ShortcutConfig = {
-        ...defaultConfig.shortcuts!,
-        ...(previousConfig.shortcuts || {}),
-      };
-      const previousProviders = previousConfig.providers
-        ? normalizeProvidersForSettingsSave(previousConfig.providers as ProvidersConfig)
-        : normalizedProviders;
-      const previousSkipMissedJobs = coworkConfig.skipMissedJobs ?? true;
-      const previousOpenClawHeartbeatEnabled = coworkConfig.openClawHeartbeatEnabled ?? false;
-      const previousAgentEngine = coworkConfig.agentEngine || 'openclaw';
-      const previousOpenClawSessionKeepAlive = coworkConfig.openClawSessionPolicy?.keepAlive
-        || OpenClawSessionKeepAliveValues.ThirtyDays;
-      const previousMemorySettings = {
-        embeddingEnabled: coworkConfig.embeddingEnabled ?? false,
-        embeddingModel: coworkConfig.embeddingModel ?? '',
-        embeddingProvider: coworkConfig.embeddingProvider ?? 'openai',
-        embeddingRemoteApiKey: coworkConfig.embeddingRemoteApiKey ?? '',
-        embeddingRemoteBaseUrl: coworkConfig.embeddingRemoteBaseUrl ?? '',
-        embeddingVectorWeight: coworkConfig.embeddingVectorWeight ?? 0.7,
-        memoryEnabled: coworkConfig.memoryEnabled ?? true,
-        memoryLlmJudgeEnabled: coworkConfig.memoryLlmJudgeEnabled ?? false,
-      };
-      const nextMemorySettings = {
-        embeddingEnabled,
-        embeddingModel,
-        embeddingProvider,
-        embeddingRemoteApiKey,
-        embeddingRemoteBaseUrl,
-        embeddingVectorWeight,
-        memoryEnabled: coworkMemoryEnabled,
-        memoryLlmJudgeEnabled: coworkMemoryLlmJudgeEnabled,
-      };
-      const previousDreamingSettings = {
-        dreamingEnabled: coworkConfig.dreamingEnabled ?? false,
-        dreamingFrequency: coworkConfig.dreamingFrequency ?? '0 3 * * *',
-      };
-      const nextDreamingSettings = {
-        dreamingEnabled,
-        dreamingFrequency,
-      };
-      const previousNotificationSettings = normalizeNotificationSettings(
-        previousConfig.notificationSettings,
-      );
-      const previousArtifactAutoPreviewEnabled = resolveArtifactAutoPreviewEnabled(
-        previousConfig.artifactAutoPreviewEnabled,
-      );
-      const previousThemeId = initialThemeIdRef.current;
-      const previousUiFontSize = normalizeFontPreference(
-        previousConfig.uiFontSize,
-        FontPreferences.UiFontSizeDefault,
-        FontPreferences.UiFontSizeMin,
-        FontPreferences.UiFontSizeMax,
-      );
-      const previousCodeFontSize = normalizeFontPreference(
-        previousConfig.codeFontSize,
-        FontPreferences.CodeFontSizeDefault,
-        FontPreferences.CodeFontSizeMin,
-        FontPreferences.CodeFontSizeMax,
-      );
-      let savedPluginPendingChanges: PluginPendingChanges | null = null;
-
       await configService.updateConfig({
         api: {
           key: primaryProvider.apiKey,
@@ -3458,22 +2276,12 @@ const Settings: React.FC<SettingsProps> = ({
         },
       });
 
-      if (!usageAnalyticsEnabled) {
-        clearPendingPublishingConversionAttribution();
-      }
-
-      if (previousArtifactAutoPreviewEnabled !== artifactAutoPreviewEnabled) {
-        console.log(
-          `[Settings] artifact auto-preview preference updated: enabled=${artifactAutoPreviewEnabled}`,
-        );
-      }
-
       applyTypographyPreferences({ uiFontSize, codeFontSize });
 
       // 应用语言
       i18nService.setLanguage(language, { persist: false });
 
-      // Set API with the primary provider - handle Qwen OAuth
+      // Set API with the primary provider
       let apiKeyToUse = primaryProvider.apiKey;
       let baseUrlToUse = primaryProvider.baseUrl;
 
@@ -3503,11 +2311,6 @@ const Settings: React.FC<SettingsProps> = ({
       dispatch(setAvailableModels(allModels));
 
       if (hasCoworkConfigChanges) {
-        if (previousOpenClawHeartbeatEnabled !== openClawHeartbeatEnabled) {
-          console.log(
-            `[Settings] updating OpenClaw heartbeat: enabled=${openClawHeartbeatEnabled}, previous=${previousOpenClawHeartbeatEnabled}`,
-          );
-        }
         const updated = await coworkService.updateConfig({
           agentEngine: coworkAgentEngine,
           memoryEnabled: coworkMemoryEnabled,
@@ -3542,131 +2345,10 @@ const Settings: React.FC<SettingsProps> = ({
         const pendingChanges = pluginsSettingsRef.current.getPendingChanges();
         if (pendingChanges) {
           await window.electron?.plugins.batchSave(pendingChanges);
-          savedPluginPendingChanges = pendingChanges;
           pluginsSettingsRef.current.resetDirty();
         }
       }
 
-      if (usageAnalyticsEnabled) {
-        if (previousConfig.language !== language) {
-          reportGeneralSettingChanged('language', language, previousConfig.language);
-        }
-        if (previousArtifactAutoPreviewEnabled !== artifactAutoPreviewEnabled) {
-          reportGeneralSettingChanged(
-            'artifactAutoPreviewEnabled',
-            artifactAutoPreviewEnabled,
-            previousArtifactAutoPreviewEnabled,
-          );
-        }
-        if ((previousConfig.useSystemProxy ?? false) !== useSystemProxy) {
-          reportGeneralSettingChanged('useSystemProxy', useSystemProxy, previousConfig.useSystemProxy ?? false);
-        }
-        if ((previousConfig.sqliteAutoBackupEnabled === true) !== sqliteAutoBackupEnabled) {
-          reportGeneralSettingChanged(
-            'sqliteAutoBackupEnabled',
-            sqliteAutoBackupEnabled,
-            previousConfig.sqliteAutoBackupEnabled === true,
-          );
-        }
-        if (previousNotificationSettings.taskCompletionNotificationMode !== taskCompletionNotificationMode) {
-          reportGeneralSettingChanged(
-            'taskCompletionNotificationMode',
-            taskCompletionNotificationMode,
-            previousNotificationSettings.taskCompletionNotificationMode,
-          );
-        }
-        if (previousNotificationSettings.permissionNotificationsEnabled !== permissionNotificationsEnabled) {
-          reportGeneralSettingChanged(
-            'permissionNotificationsEnabled',
-            permissionNotificationsEnabled,
-            previousNotificationSettings.permissionNotificationsEnabled,
-          );
-        }
-        if (previousNotificationSettings.questionNotificationsEnabled !== questionNotificationsEnabled) {
-          reportGeneralSettingChanged(
-            'questionNotificationsEnabled',
-            questionNotificationsEnabled,
-            previousNotificationSettings.questionNotificationsEnabled,
-          );
-        }
-        if (previousSkipMissedJobs !== skipMissedJobs) {
-          reportGeneralSettingChanged('skipMissedJobs', skipMissedJobs, previousSkipMissedJobs);
-        }
-        if (previousConfig.theme !== theme) {
-          reportAppearanceSettingChanged('theme', theme, previousConfig.theme);
-        }
-        if (previousThemeId !== themeId) {
-          reportAppearanceSettingChanged('themeId', themeId, previousThemeId);
-        }
-        if (previousUiFontSize !== uiFontSize) {
-          reportAppearanceSettingChanged('uiFontSize', uiFontSize, previousUiFontSize);
-        }
-        if (previousCodeFontSize !== codeFontSize) {
-          reportAppearanceSettingChanged('codeFontSize', codeFontSize, previousCodeFontSize);
-        }
-        const browserSettingParams = buildBrowserSettingAnalyticsParams(
-          previousBrowserWebAccess,
-          normalizedBrowserWebAccess,
-        );
-        if (browserSettingParams) {
-          reportBrowserSettingChanged(browserSettingParams);
-        }
-        if (previousAgentEngine !== coworkAgentEngine) {
-          reportAgentEngineSettingChanged('agentEngine', coworkAgentEngine, previousAgentEngine);
-        }
-        if (previousOpenClawHeartbeatEnabled !== openClawHeartbeatEnabled) {
-          reportAgentEngineSettingChanged(
-            'openClawHeartbeatEnabled',
-            openClawHeartbeatEnabled,
-            previousOpenClawHeartbeatEnabled,
-          );
-        }
-        if (previousOpenClawSessionKeepAlive !== openClawSessionKeepAlive) {
-          reportAgentEngineSettingChanged(
-            'openClawSessionKeepAlive',
-            openClawSessionKeepAlive,
-            previousOpenClawSessionKeepAlive,
-          );
-        }
-        const memorySettingsSummary = buildMemorySettingAnalyticsSummary(
-          previousMemorySettings,
-          nextMemorySettings,
-        );
-        if (memorySettingsSummary) {
-          reportMemorySettingChanged(memorySettingsSummary);
-        }
-        const dreamingSettingsSummary = buildDreamingSettingAnalyticsSummary(
-          previousDreamingSettings,
-          nextDreamingSettings,
-        );
-        if (dreamingSettingsSummary) {
-          reportDreamingSettingChanged(dreamingSettingsSummary);
-        }
-        const shortcutSettingsSummary = buildShortcutSettingAnalyticsSummary(
-          previousShortcuts,
-          shortcuts,
-        );
-        if (shortcutSettingsSummary) {
-          reportShortcutSettingChanged(shortcutSettingsSummary);
-        }
-        const pluginSettingsSummary = buildPluginSettingsAnalyticsSummary(savedPluginPendingChanges);
-        if (pluginSettingsSummary) {
-          reportPluginSettingsSaved(pluginSettingsSummary);
-        }
-        const customModelSettingsSummary = buildCustomModelSettingsAnalyticsSummary(
-          previousProviders,
-          normalizedProviders,
-        );
-        if (customModelSettingsSummary) {
-          reportCustomModelSettingsSaved(customModelSettingsSummary);
-        }
-        if (previousConfig.usageAnalyticsEnabled === false) {
-          void reportYdAnalyzer({
-            action: LogReporterAction.UsageAnalyticsEnabled,
-            source: SettingsAnalyticsSource.General,
-          });
-        }
-      }
 
       didSaveRef.current = true;
       onClose();
@@ -4053,9 +2735,7 @@ const Settings: React.FC<SettingsProps> = ({
 
 
     if (providerRequiresApiKey(testingProvider) && !hasValidAuth) {
-      reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
-        failureReason: 'missing_api_key',
-      });
+      
       showTestResultModal({ success: false, message: i18nService.t('apiKeyRequired') }, testingProvider);
       setIsTesting(false);
       return;
@@ -4064,9 +2744,7 @@ const Settings: React.FC<SettingsProps> = ({
     // 获取第一个可用模型 - use a shallow copy to avoid mutating state
     const originalModel = providerConfig.models?.[0];
     if (!originalModel) {
-      reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
-        failureReason: 'missing_model',
-      });
+      
       showTestResultModal({ success: false, message: i18nService.t('noModelsConfigured') }, testingProvider);
       setIsTesting(false);
       return;
@@ -4092,34 +2770,11 @@ const Settings: React.FC<SettingsProps> = ({
       // Determine effective API key
       let effectiveApiKey = providerConfig.apiKey;
 
-      if (testingProvider === ProviderName.Copilot) {
-        const result = await window.electron.githubCopilot.refreshToken();
-        if (!result.success || !result.token) {
-          reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'failed', {
-            failureReason: 'unknown',
-          });
-          showTestResultModal({
-            success: false,
-            message: result.error || i18nService.t('apiKeyRequired'),
-          }, testingProvider);
-          return;
-        }
-        effectiveApiKey = result.token;
-        if (result.baseUrl) {
-          effectiveBaseUrl = result.baseUrl;
-          normalizedBaseUrl = effectiveBaseUrl.replace(/\/+$/, '');
-        }
-        apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
-          apiKey: result.token,
-          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
-        });
-      }
-
       if (testingProvider === 'qwen') {
         // Use regular API Key mode
         effectiveApiKey = providerConfig.apiKey;
-        // Ensure model ID is not an OAuth-mapped name (vision-model/coder-model)
-        // This can happen if a previous OAuth test mutated the model in state and it got persisted
+        // Ensure model ID is not a placeholder name (vision-model/coder-model)
+        // This can happen if a previous mutation left a placeholder persisted
         if (firstModel.id === 'vision-model' || firstModel.id === 'coder-model') {
           // Restore from defaultConfig's first qwen model
           const defaultQwenModel = defaultConfig.providers?.qwen?.models?.[0];
@@ -4127,7 +2782,7 @@ const Settings: React.FC<SettingsProps> = ({
         }
       }
 
-      // Determine format after all overrides (OAuth may switch to openai)
+      // Determine format after all overrides
       // 统一为两种协议格式：
       // - anthropic: /v1/messages
       // - openai provider: /v1/responses
@@ -4163,13 +2818,6 @@ const Settings: React.FC<SettingsProps> = ({
         if (effectiveApiKey) {
           headers.Authorization = `Bearer ${effectiveApiKey}`;
         }
-        if (testingProvider === ProviderName.Copilot) {
-          headers['Copilot-Integration-Id'] = 'vscode-chat';
-          headers['Editor-Version'] = 'vscode/1.96.2';
-          headers['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
-          headers['User-Agent'] = 'GitHubCopilotChat/0.26.7';
-          headers['Openai-Intent'] = 'conversation-panel';
-        }
         const openAIRequestBody = buildOpenAIConnectionTestRequestBody({
           provider: testingProvider,
           model: firstModel,
@@ -4185,7 +2833,7 @@ const Settings: React.FC<SettingsProps> = ({
 
       if (response.ok) {
         enableProvider(testingProvider);
-        reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'success');
+        
         showTestResultModal({ success: true, message: i18nService.t('connectionSuccess') }, testingProvider);
       } else {
         const data = response.data || {};
@@ -4193,20 +2841,15 @@ const Settings: React.FC<SettingsProps> = ({
         const errorMessage = data.error?.message || data.message || `${i18nService.t('connectionFailed')}: ${response.status}`;
         if (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes('model output limit was reached')) {
           enableProvider(testingProvider);
-          reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'success');
+          
           showTestResultModal({ success: true, message: i18nService.t('connectionSuccess') }, testingProvider);
           return;
         }
-        reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'failed', {
-          failureReason: 'http_error',
-          statusCode: response.status,
-        });
+        
         showTestResultModal({ success: false, message: errorMessage }, testingProvider);
       }
     } catch (err) {
-      reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
-        failureReason: 'network_error',
-      });
+      
       showTestResultModal({
         success: false,
         message: err instanceof Error ? err.message : i18nService.t('connectionFailed'),
@@ -4842,10 +3485,8 @@ const Settings: React.FC<SettingsProps> = ({
                         `[Renderer][Settings] auto-launch update result: success=${result.success}, enabled=${result.enabled ?? 'unknown'}, error=${result.error ?? 'none'}`,
                       );
                       if (result.success) {
-                        const previous = autoLaunch;
                         const actualEnabled = result.enabled ?? next;
                         setAutoLaunchState(actualEnabled);
-                        reportGeneralSettingChanged('autoLaunch', actualEnabled, previous);
                       } else {
                         if (typeof result.enabled === 'boolean') {
                           setAutoLaunchState(result.enabled);
@@ -4875,9 +3516,7 @@ const Settings: React.FC<SettingsProps> = ({
                     try {
                       const result = await window.electron.preventSleep.set(next);
                       if (result.success) {
-                        const previous = preventSleep;
                         setPreventSleepState(next);
-                        reportGeneralSettingChanged('preventSleep', next, previous);
                       } else {
                         setError(result.error || 'Failed to update prevent-sleep setting');
                       }
@@ -5583,25 +4222,7 @@ const Settings: React.FC<SettingsProps> = ({
             setShowApiKey={setShowApiKey}
             isImportingProviders={isImportingProviders}
             isExportingProviders={isExportingProviders}
-            minimaxIsOAuthMode={minimaxIsOAuthMode}
-            openaiIsOAuthMode={openaiIsOAuthMode}
             isBaseUrlLocked={isBaseUrlLocked}
-            minimaxOAuthPhase={minimaxOAuthPhase}
-            minimaxOAuthRegion={minimaxOAuthRegion}
-            setMinimaxOAuthRegion={setMinimaxOAuthRegion}
-            setMinimaxOAuthPhase={setMinimaxOAuthPhase}
-            openaiOAuthPhase={openaiOAuthPhase}
-            setOpenaiOAuthPhase={setOpenaiOAuthPhase}
-            openaiOAuthStatus={openaiOAuthStatus}
-            xaiIsOAuthMode={xaiIsOAuthMode}
-            xaiOAuthPhase={xaiOAuthPhase}
-            setXaiOAuthPhase={setXaiOAuthPhase}
-            xaiOAuthStatus={xaiOAuthStatus}
-            copilotAuthStatus={copilotAuthStatus}
-            copilotUserCode={copilotUserCode}
-            copilotVerificationUri={copilotVerificationUri}
-            copilotGithubUser={copilotGithubUser}
-            copilotError={copilotError}
             isTesting={isTesting}
             testResult={testResult}
             isTestResultModalOpen={isTestResultModalOpen}
@@ -5615,19 +4236,6 @@ const Settings: React.FC<SettingsProps> = ({
             handleAddCustomProvider={handleAddCustomProvider}
             handleDeleteCustomProvider={handleDeleteCustomProvider}
             handleProviderConfigChange={handleProviderConfigChange}
-            setProviders={setProviders}
-            handleMiniMaxDeviceLogin={handleMiniMaxDeviceLogin}
-            handleCancelMiniMaxLogin={handleCancelMiniMaxLogin}
-            handleMiniMaxOAuthLogout={handleMiniMaxOAuthLogout}
-            handleOpenAIOAuthLogin={handleOpenAIOAuthLogin}
-            handleCancelOpenAIOAuthLogin={handleCancelOpenAIOAuthLogin}
-            handleOpenAIOAuthLogout={handleOpenAIOAuthLogout}
-            handleXaiOAuthLogin={handleXaiOAuthLogin}
-            handleCancelXaiOAuthLogin={handleCancelXaiOAuthLogin}
-            handleXaiOAuthLogout={handleXaiOAuthLogout}
-            handleCopilotSignIn={handleCopilotSignIn}
-            handleCopilotSignOut={handleCopilotSignOut}
-            handleCopilotCancelAuth={handleCopilotCancelAuth}
             handleTestConnection={handleTestConnection}
             handleAddModel={handleAddModel}
             handleEditModel={handleEditModel}

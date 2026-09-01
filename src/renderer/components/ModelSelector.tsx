@@ -2,13 +2,11 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  ClockIcon,
   LockClosedIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import {
   getModelThinkingLevels,
-  ModelRuntimeProfile,
   type ModelThinkingConfig,
   type ModelThinkingLevel as ModelThinkingLevelType,
   ProviderName,
@@ -19,7 +17,6 @@ import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { getProviderIcon, ProviderIconId } from '../providers/uiRegistry';
-import { authService } from '../services/auth';
 import { i18nService } from '../services/i18n';
 import {
   readRememberedModelThinkingLevel,
@@ -82,12 +79,6 @@ export const CascadeSide = {
   Right: 'right',
 } as const;
 export type CascadeSide = typeof CascadeSide[keyof typeof CascadeSide];
-export const ModelSelectorGroup = {
-  Server: 'server',
-  User: 'user',
-} as const;
-type ModelSelectorGroup = typeof ModelSelectorGroup[keyof typeof ModelSelectorGroup];
-
 export interface ModelSelectorSections {
   primaryModels: Model[];
   moreModels: Model[];
@@ -109,69 +100,33 @@ export const countVisibleModelSelectorRows = (
 };
 
 export interface ModelSelectorChangeMeta {
-  group: ModelSelectorGroup;
   thinkingLevel?: ModelThinkingLevelType;
 }
 
 export const ModelAccessPromptKind = {
-  AgenticNotReady: 'agentic_not_ready',
   Login: 'login',
-  Subscribe: 'subscribe',
 } as const;
 export type ModelAccessPromptKind = typeof ModelAccessPromptKind[keyof typeof ModelAccessPromptKind];
 
 interface ModelAccessPromptModalProps {
-  promptKind: ModelAccessPromptKind;
   onClose: () => void;
   titleKey?: string;
   descriptionKey?: string;
   primaryButtonKey?: string;
-  showLearnMore?: boolean;
 }
 
 export const ModelAccessPromptModal: React.FC<ModelAccessPromptModalProps> = ({
-  promptKind,
   onClose,
   titleKey,
   descriptionKey,
   primaryButtonKey,
-  showLearnMore = true,
 }) => {
-  const agenticNotReadyPrompt = promptKind === ModelAccessPromptKind.AgenticNotReady;
-  const loginPrompt = promptKind === ModelAccessPromptKind.Login;
-  const resolvedTitleKey = titleKey ?? (
-    agenticNotReadyPrompt
-      ? 'modelSelectorAgenticNotReadyTitle'
-      : loginPrompt ? 'modelSelectorLoginTitle' : 'modelSelectorSubscribeTitle'
-  );
-  const resolvedDescriptionKey = descriptionKey ?? (
-    agenticNotReadyPrompt
-      ? 'serverModelAgenticNotReady'
-      : loginPrompt ? 'modelSelectorLoginDesc' : 'modelSelectorSubscribeDesc'
-  );
-  const resolvedPrimaryButtonKey = primaryButtonKey ?? (
-    agenticNotReadyPrompt
-      ? 'modelSelectorAgenticNotReadyBtn'
-      : loginPrompt ? 'modelSelectorLoginBtn' : 'modelSelectorSubscribeBtn'
-  );
+  const resolvedTitleKey = titleKey ?? 'modelSelectorLoginTitle';
+  const resolvedDescriptionKey = descriptionKey ?? 'modelSelectorLoginDesc';
+  const resolvedPrimaryButtonKey = primaryButtonKey ?? 'modelSelectorLoginBtn';
 
-  const openSubscriptionPage = async () => {
+  const handlePrimary = () => {
     onClose();
-    const { getPortalPricingUrl } = await import('../services/endpoints');
-    await window.electron.shell.openExternal(getPortalPricingUrl());
-  };
-
-  const handlePrimary = async () => {
-    if (promptKind === ModelAccessPromptKind.Login) {
-      onClose();
-      await authService.login();
-      return;
-    }
-    if (promptKind === ModelAccessPromptKind.AgenticNotReady) {
-      onClose();
-      return;
-    }
-    await openSubscriptionPage();
   };
 
   return (
@@ -205,15 +160,6 @@ export const ModelAccessPromptModal: React.FC<ModelAccessPromptModalProps> = ({
       >
         {i18nService.t(resolvedPrimaryButtonKey)}
       </button>
-      {loginPrompt && showLearnMore && (
-        <button
-          type="button"
-          onClick={() => { void openSubscriptionPage(); }}
-          className="mt-3 w-full text-center text-sm text-secondary transition-colors hover:text-foreground"
-        >
-          {i18nService.t('modelSelectorLearnMore')}
-        </button>
-      )}
     </Modal>
   );
 };
@@ -328,29 +274,17 @@ export function resolvePickerThinkingLevel(options: {
   ) ?? config.defaultLevel;
 }
 
-export function isModelAgenticBlocked(
-  model: Pick<Model, 'agenticReady' | 'isServerModel' | 'runtimeProfile'> | null | undefined,
-): boolean {
-  return model?.isServerModel === true
-    && model.runtimeProfile === ModelRuntimeProfile.MoonshotKimiK3
-    && model.agenticReady !== true;
-}
-
 export function canConfigureModelThinking(
   model: Pick<
     Model,
     | 'accessible'
-    | 'agenticReady'
-    | 'isServerModel'
     | 'requestCapabilities'
-    | 'runtimeProfile'
     | 'thinkingConfig'
   > | null | undefined,
 ): boolean {
   return !!model?.thinkingConfig
     && supportsEgoAIRequestOptionsV1(model.requestCapabilities)
-    && model.accessible !== false
-    && !isModelAgenticBlocked(model);
+    && model.accessible !== false;
 }
 
 export function supportsConfigurableModelThinkingProtocol(
@@ -390,7 +324,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const [resolvedDirection, setResolvedDirection] = React.useState<'up' | 'down'>('down');
   const [portalStyle, setPortalStyle] = React.useState<React.CSSProperties>({});
   const [listMaxHeight, setListMaxHeight] = React.useState<number>(LIST_MAX_HEIGHT);
-  const [activeGroup, setActiveGroup] = React.useState<ModelSelectorGroup>(ModelSelectorGroup.Server);
   const [moreModelsExpanded, setMoreModelsExpanded] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
@@ -414,48 +347,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   const thinkingSelectionEnabled = controlled && thinkingLevel !== undefined;
   const globalSelectedModel = useSelector((state: RootState) => state.model.defaultSelectedModel);
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
-  const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const selectedModel = controlled ? value ?? null : globalSelectedModel;
   const selectedModelKey = selectedModel ? getModelIdentityKey(selectedModel) : '';
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
-  const serverModels = availableModels.filter(m => m.isServerModel);
-  const userModels = availableModels.filter(m => !m.isServerModel);
-  const modelGroups = [
-    ...(serverModels.length > 0
-      ? [{ key: ModelSelectorGroup.Server, label: i18nService.t('modelGroupServer') }]
-      : []),
-    ...(userModels.length > 0
-      ? [{ key: ModelSelectorGroup.User, label: i18nService.t('modelGroupUser') }]
-      : []),
-  ];
-  const shouldShowGroupTabs = serverModels.length > 0;
-  const isGroupAvailable = (group: ModelSelectorGroup): boolean => (
-    group === ModelSelectorGroup.Server ? serverModels.length > 0 : userModels.length > 0
-  );
-  const getModelGroup = (model: Model | null): ModelSelectorGroup | null => {
-    if (!model) return null;
-    return model.isServerModel ? ModelSelectorGroup.Server : ModelSelectorGroup.User;
-  };
-  const selectedModelGroup = getModelGroup(selectedModel);
-  const showCurrentModelFooter = shouldShowGroupTabs && selectedModel !== null && selectedModelGroup !== null;
-  const getPreferredGroup = (): ModelSelectorGroup => {
-    const selectedGroup = getModelGroup(selectedModel);
-    if (selectedGroup && isGroupAvailable(selectedGroup)) return selectedGroup;
-    return serverModels.length > 0 ? ModelSelectorGroup.Server : ModelSelectorGroup.User;
-  };
-  const visibleGroup = isGroupAvailable(activeGroup) ? activeGroup : getPreferredGroup();
-  const visibleModels = shouldShowGroupTabs
-    ? (visibleGroup === ModelSelectorGroup.Server ? serverModels : userModels)
-    : availableModels;
-  const visibleSections = partitionModelSelectorModels(visibleModels);
-  // Keep the list height identical across tabs so switching never resizes the dropdown.
-  const largestGroupRowCount = Math.max(
-    countVisibleModelSelectorRows(serverModels, moreModelsExpanded),
-    countVisibleModelSelectorRows(userModels, moreModelsExpanded),
-  ) + (defaultLabel ? 1 : 0);
-  const stableListMinHeight = shouldShowGroupTabs
-    ? Math.min(largestGroupRowCount * MODEL_ITEM_HEIGHT + LIST_VERTICAL_PADDING, LIST_MAX_HEIGHT)
-    : undefined;
+  const visibleSections = partitionModelSelectorModels(availableModels);
 
   // 点击外部区域关闭下拉框
   React.useEffect(() => {
@@ -507,8 +402,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     const availableSpace = (direction === 'up'
       ? rect.top - topBoundary
       : bottomBoundary - rect.bottom) - DROPDOWN_TRIGGER_GAP - DROPDOWN_VIEWPORT_MARGIN;
-    return resolveDropdownListMaxHeight(availableSpace, shouldShowGroupTabs, showCurrentModelFooter);
-  }, [portal, shouldShowGroupTabs, showCurrentModelFooter]);
+    return resolveDropdownListMaxHeight(availableSpace, false, false);
+  }, [portal]);
 
   const updatePortalPosition = React.useCallback((direction: 'up' | 'down') => {
     if (!containerRef.current) return;
@@ -568,7 +463,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     const targetScrollTop = selectedOffsetTop - ((scrollContainer.clientHeight - selectedItem.offsetHeight) / 2);
     const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
     scrollContainer.scrollTop = Math.min(Math.max(0, targetScrollTop), maxScrollTop);
-  }, [isOpen, selectedModelKey, visibleGroup, visibleModels.length, listMaxHeight]);
+  }, [isOpen, selectedModelKey, availableModels.length, listMaxHeight]);
 
   React.useLayoutEffect(() => {
     if (!isOpen || !moreModelsExpanded || !revealMoreModelsOnExpandRef.current) return;
@@ -602,11 +497,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
       if (portal) {
         updatePortalPosition(nextDirection);
       }
-      const preferredGroup = getPreferredGroup();
-      setActiveGroup(preferredGroup);
-      setMoreModelsExpanded(
-        selectedModel?.moreModel === true && getModelGroup(selectedModel) === preferredGroup,
-      );
+      setMoreModelsExpanded(selectedModel?.moreModel === true);
       setIsOpen(true);
     } else {
       setIsOpen(false);
@@ -630,14 +521,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   const handleModelSelect = (model: Model | null) => {
     if (disabled) return;
-    if (isModelAgenticBlocked(model)) {
-      setRestrictedPrompt(ModelAccessPromptKind.AgenticNotReady);
-      setHoveredModel(null);
-      setIsOpen(false);
-      return;
-    }
     if (model && model.accessible === false) {
-      setRestrictedPrompt(isLoggedIn ? ModelAccessPromptKind.Subscribe : ModelAccessPromptKind.Login);
+      setRestrictedPrompt(ModelAccessPromptKind.Login);
       setHoveredModel(null);
       setIsOpen(false);
       return;
@@ -645,7 +530,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     const resolvedThinkingLevel = model ? resolveThinkingLevel(model) : undefined;
     if (controlled) {
       onChange(model, {
-        group: getModelGroup(model) ?? visibleGroup,
         ...(resolvedThinkingLevel ? { thinkingLevel: resolvedThinkingLevel } : {}),
       });
     } else if (model) {
@@ -669,7 +553,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     // the user switches to another model and back.
     rememberModelThinkingLevel(getModelIdentityKey(model), resolvedThinkingLevel);
     onChange(model, {
-      group: getModelGroup(model) ?? visibleGroup,
       thinkingLevel: resolvedThinkingLevel,
     });
     setRestrictedPrompt(null);
@@ -683,14 +566,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   }, [isOpen]);
 
   React.useEffect(() => {
-    if (
-      isOpen
-      && selectedModel?.moreModel === true
-      && selectedModelGroup === visibleGroup
-    ) {
+    if (isOpen && selectedModel?.moreModel === true) {
       setMoreModelsExpanded(true);
     }
-  }, [isOpen, selectedModel?.moreModel, selectedModelGroup, visibleGroup]);
+  }, [isOpen, selectedModel?.moreModel]);
 
   React.useLayoutEffect(() => {
     if (!hoveredModel || !hoverCardRef.current) return;
@@ -756,7 +635,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
   };
   const resolveModelIconProviderKey = (model: Model): string => {
     const providerKey = model.providerKey?.trim();
-    if (providerKey && providerKey !== ProviderName.EgoaiServer) return providerKey;
+    if (providerKey) return providerKey;
 
     const searchableText = `${model.name} ${model.id}`;
     return MODEL_ICON_PROVIDER_HINTS.find(({ pattern }) => pattern.test(searchableText))?.providerName
@@ -799,11 +678,9 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     hoverTimerRef.current = setTimeout(() => {
       if (
         !model.description
-        && !model.costMultiplier
         && !model.supportsImage
         && !model.supportsThinking
         && !model.thinkingConfig
-        && !isModelAgenticBlocked(model)
       ) {
         setHoveredModel(null);
         return;
@@ -875,9 +752,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   const renderModelItem = (model: Model) => {
     const selected = isSelected(model);
-    const agenticBlocked = isModelAgenticBlocked(model);
     const restricted = model.accessible === false;
-    const blocked = restricted || agenticBlocked;
+    const blocked = restricted;
     const hasThinkingProtocol = supportsConfigurableModelThinkingProtocol(model);
 
     return (
@@ -911,24 +787,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
             {getModelThinkingLevelLabel(resolveThinkingLevel(model) ?? model.thinkingConfig.defaultLevel)}
           </span>
         )}
-        {model.costMultiplier != null && model.costMultiplier > 0 && (
-          <span className="shrink-0 text-[11px] text-secondary whitespace-nowrap">
-            x{model.costMultiplier}
-          </span>
-        )}
         <span className="flex-1" />
         {model.supportsImage && (
           <span className="shrink-0 rounded-md bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary">
             {i18nService.t('modelSupportsImageInputBadge')}
           </span>
         )}
-        {agenticBlocked && (
-          <span className="flex shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:text-amber-300">
-            <ClockIcon className="h-3 w-3" />
-            {i18nService.t('modelSelectorAgenticVerifyingBadge')}
-          </span>
-        )}
-        {restricted && !agenticBlocked && (
+        {restricted && (
           <LockClosedIcon className="h-3.5 w-3.5 shrink-0 text-secondary" />
         )}
         {selected && !blocked && (
@@ -993,16 +858,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         <div className="text-[13px] font-semibold text-foreground leading-5">{hoveredModel.name}</div>
         {hoveredModel.description && (
           <div className="mt-1 text-[11px] text-secondary leading-4">{hoveredModel.description}</div>
-        )}
-        {isModelAgenticBlocked(hoveredModel) && (
-          <div className="mt-2 rounded-lg bg-amber-500/10 px-2 py-1.5 text-[11px] leading-4 text-amber-700 dark:text-amber-300">
-            {i18nService.t('serverModelAgenticNotReady')}
-          </div>
-        )}
-        {hoveredModel.costMultiplier != null && hoveredModel.costMultiplier > 0 && (
-          <div className="mt-2 text-[11px] text-secondary">
-            ({i18nService.t('modelCostMultiplierLabel')} x{hoveredModel.costMultiplier})
-          </div>
         )}
         {(hoveredModel.supportsImage || hoveredModel.supportsThinking) && (
           <div className="mt-1.5 flex items-center gap-3 text-[11px] text-emerald-600">
@@ -1080,64 +935,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
     );
   };
 
-  const renderGroupTabs = () => (
-    <div className="border-b border-border/60 p-2">
-      <div className="flex rounded-lg bg-surface-raised p-0.5" role="tablist" aria-label={i18nService.t('model')}>
-        {modelGroups.map(group => {
-          const active = visibleGroup === group.key;
-          return (
-            <button
-              type="button"
-              key={group.key}
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                setActiveGroup(group.key);
-                setMoreModelsExpanded(
-                  selectedModel?.moreModel === true && getModelGroup(selectedModel) === group.key,
-                );
-              }}
-              className={`flex min-w-0 flex-1 items-center justify-center rounded-md px-2 py-1.5 text-[12px] leading-4 transition-colors ${
-                active
-                  ? 'bg-surface font-semibold text-foreground shadow-sm'
-                  : 'font-medium text-secondary hover:text-foreground'
-              }`}
-            >
-              <span className="truncate">{group.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  const renderCurrentModelFooter = () => {
-    if (!showCurrentModelFooter || !selectedModel || !selectedModelGroup) return null;
-    const inOtherGroup = selectedModelGroup !== visibleGroup;
-    return (
-      <button
-        type="button"
-        onClick={() => setActiveGroup(selectedModelGroup)}
-        className="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-left transition-colors hover:bg-surface-raised"
-      >
-        <span className="shrink-0 text-[11px] leading-4 text-secondary">
-          {i18nService.t('modelSelectorCurrentModel')}
-        </span>
-        <span className="min-w-0 truncate text-[12px] font-medium leading-4 text-foreground">
-          {selectedModel.name}
-        </span>
-        {inOtherGroup && <ChevronRightIcon className="ml-auto h-3 w-3 shrink-0 text-secondary" />}
-      </button>
-    );
-  };
-
   const renderRestrictedPrompt = () => {
     if (!restrictedPrompt) return null;
     return (
-      <ModelAccessPromptModal
-        promptKind={restrictedPrompt}
-        onClose={() => setRestrictedPrompt(null)}
-      />
+      <ModelAccessPromptModal onClose={() => setRestrictedPrompt(null)} />
     );
   };
 
@@ -1147,12 +948,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
       style={portal ? portalStyle : undefined}
       className={`${portal ? '' : `absolute ${dropdownPositionClass} ${dropdownAlignmentClass}`} w-[300px] bg-surface rounded-xl popover-enter shadow-popover z-50 border-border border overflow-hidden`}
     >
-      {shouldShowGroupTabs && renderGroupTabs()}
       <div
         ref={scrollContainerRef}
         style={{
           maxHeight: listMaxHeight,
-          minHeight: stableListMinHeight !== undefined ? Math.min(stableListMinHeight, listMaxHeight) : undefined,
         }}
         className="model-selector-scroll overflow-y-auto py-1"
       >
@@ -1173,7 +972,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         {renderModelRows(visibleSections.primaryModels)}
         {renderMoreModelsSection()}
       </div>
-      {renderCurrentModelFooter()}
     </div>
   ) : null;
 
@@ -1185,18 +983,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         onClick={toggleOpen}
         className={`flex min-w-0 items-center overflow-hidden hover:bg-surface-raised text-foreground transition-colors disabled:opacity-70 disabled:cursor-wait ${triggerClassName} ${isOpen ? 'bg-surface-raised' : ''}`}
       >
-        {selectedModel?.isServerModel && (
-          <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-secondary">
-            {renderProviderIcon(selectedModel)}
-          </span>
-        )}
         <span className={`${triggerTextClassName} min-w-0 truncate`}>{selectedModel?.name ?? defaultLabel ?? ''}</span>
-        {isModelAgenticBlocked(selectedModel) && (
-          <ClockIcon
-            className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-300"
-            aria-label={i18nService.t('serverModelAgenticNotReady')}
-          />
-        )}
         <ChevronDownIcon className={`${triggerIconClassName} shrink-0 dark:text-claude-darkTextSecondary text-claude-textSecondary`} />
       </button>
 

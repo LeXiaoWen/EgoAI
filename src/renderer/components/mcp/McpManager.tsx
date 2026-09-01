@@ -26,12 +26,6 @@ import EditIcon from '../icons/EditIcon';
 import PlusCircleIcon from '../icons/PlusCircleIcon';
 import SearchIcon from '../icons/SearchIcon';
 import TrashIcon from '../icons/TrashIcon';
-import {
-  getFormAnalyticsParams,
-  getRegistryAnalyticsParams,
-  getServerAnalyticsParams,
-  reportMcpAction,
-} from './analytics';
 import McpCard from './McpCard';
 import McpDetailModal, { type McpDetailInfoRow, type McpDetailStat } from './McpDetailModal';
 import McpServerFormModal from './McpServerFormModal';
@@ -325,87 +319,31 @@ const McpManager: React.FC = () => {
     return entries;
   }, [searchQuery, activeCategory, dynamicRegistry, getRegistryEntryDescription, getRegistryEntryName]);
 
-  useEffect(() => {
-    const query = searchQuery.trim();
-    if (!query) return undefined;
-    const resultCount = activeTab === McpTab.Marketplace
-      ? filteredMarketplace.length
-      : filteredInstalled.length;
-    const timer = window.setTimeout(() => {
-      reportMcpAction('search', {
-        source: 'mcp_manager',
-        activeTab,
-        activeCategory,
-        searchKeywordLength: query.length,
-        resultCount,
-      });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [
-    activeCategory,
-    activeTab,
-    filteredInstalled.length,
-    filteredMarketplace.length,
-    searchQuery,
-  ]);
 
   const handleToggleEnabled = async (serverId: string) => {
     const targetServer = servers.find(s => s.id === serverId);
     if (!targetServer) return;
-    const registryEntry = getRegistryEntryForServer(targetServer);
     const targetEnabled = !targetServer.enabled;
-    reportMcpAction('toggle_enabled', {
-      source: 'mcp_manager',
-      activeTab,
-      targetEnabled,
-      ...getServerAnalyticsParams(targetServer, registryEntry),
-    });
+    
     try {
       const updatedServers = await mcpService.setServerEnabled(serverId, targetEnabled);
       dispatch(setMcpServers(updatedServers));
       setActionError('');
-      reportMcpAction('toggle_enabled_success', {
-        source: 'mcp_manager',
-        activeTab,
-        targetEnabled,
-        result: 'success',
-        ...getServerAnalyticsParams(targetServer, registryEntry),
-      });
+      
     } catch (error) {
       setActionError(error instanceof Error ? error.message : i18nService.t('mcpUpdateFailed'));
-      reportMcpAction('toggle_enabled_failed', {
-        source: 'mcp_manager',
-        activeTab,
-        targetEnabled,
-        result: 'failed',
-        errorCode: 'toggle_failed',
-        ...getServerAnalyticsParams(targetServer, registryEntry),
-      });
+      
     }
   };
 
   const handleRetryLaunchResolution = async (serverId: string) => {
     const targetServer = servers.find(s => s.id === serverId);
-    const registryEntry = targetServer ? getRegistryEntryForServer(targetServer) : undefined;
     setActionError('');
-    if (targetServer) {
-      reportMcpAction('launch_retry_submit', {
-        source: 'mcp_manager',
-        activeTab,
-        ...getServerAnalyticsParams(targetServer, registryEntry),
-      });
-    }
     const result = await mcpService.retryLaunchResolution(serverId);
     if (!result.success) {
       setActionError(result.error || i18nService.t('mcpUpdateFailed'));
       if (targetServer) {
-        reportMcpAction('launch_retry_failed', {
-          source: 'mcp_manager',
-          activeTab,
-          result: 'failed',
-          errorCode: 'launch_retry_failed',
-          ...getServerAnalyticsParams(targetServer, registryEntry),
-        });
+        
       }
       return;
     }
@@ -413,22 +351,13 @@ const McpManager: React.FC = () => {
       dispatch(setMcpServers(result.servers));
     }
     if (targetServer) {
-      reportMcpAction('launch_retry_success', {
-        source: 'mcp_manager',
-        activeTab,
-        result: 'success',
-        ...getServerAnalyticsParams(targetServer, registryEntry),
-      });
+      
     }
   };
 
   const handleRequestDelete = (server: McpServerConfig) => {
     setActionError('');
-    reportMcpAction('delete_confirm_open', {
-      source: 'mcp_manager',
-      activeTab,
-      ...getServerAnalyticsParams(server, getRegistryEntryForServer(server)),
-    });
+    
     setPendingDelete({ kind: 'server', id: server.id, name: server.name, server });
   };
 
@@ -439,13 +368,7 @@ const McpManager: React.FC = () => {
     registryEntry?: McpRegistryEntry,
   ) => {
     setActionError('');
-    reportMcpAction('delete_confirm_open', {
-      source: 'mcp_manager',
-      activeTab,
-      ...(registryEntry
-        ? getRegistryAnalyticsParams(registryEntry)
-        : { registryId, mcpName: name }),
-    });
+    
     setPendingDelete({
       kind: 'registryGroup',
       id: registryId,
@@ -459,15 +382,7 @@ const McpManager: React.FC = () => {
   const handleCancelDelete = () => {
     if (isDeleting) return;
     if (pendingDelete) {
-      reportMcpAction('delete_confirm_cancel', {
-        source: 'mcp_manager',
-        activeTab,
-        ...(pendingDelete.kind === 'server'
-          ? getServerAnalyticsParams(pendingDelete.server, getRegistryEntryForServer(pendingDelete.server))
-          : pendingDelete.registryEntry
-            ? getRegistryAnalyticsParams(pendingDelete.registryEntry)
-            : { registryId: pendingDelete.registryId, mcpName: pendingDelete.name }),
-      });
+      
     }
     setPendingDelete(null);
   };
@@ -482,32 +397,13 @@ const McpManager: React.FC = () => {
     if (!result.success) {
       setActionError(result.error || i18nService.t('mcpDeleteFailed'));
       setIsDeleting(false);
-      reportMcpAction('delete_failed', {
-        source: 'mcp_manager',
-        activeTab,
-        result: 'failed',
-        errorCode: 'delete_failed',
-        ...(pendingDelete.kind === 'server'
-          ? getServerAnalyticsParams(pendingDelete.server, getRegistryEntryForServer(pendingDelete.server))
-          : pendingDelete.registryEntry
-            ? getRegistryAnalyticsParams(pendingDelete.registryEntry)
-            : { registryId: pendingDelete.registryId, mcpName: pendingDelete.name }),
-      });
+      
       return;
     }
     if (result.servers) {
       dispatch(setMcpServers(result.servers));
     }
-    reportMcpAction('delete_success', {
-      source: 'mcp_manager',
-      activeTab,
-      result: 'success',
-      ...(pendingDelete.kind === 'server'
-        ? getServerAnalyticsParams(pendingDelete.server, getRegistryEntryForServer(pendingDelete.server))
-        : pendingDelete.registryEntry
-          ? getRegistryAnalyticsParams(pendingDelete.registryEntry)
-          : { registryId: pendingDelete.registryId, mcpName: pendingDelete.name }),
-    });
+    
     setIsDeleting(false);
     setPendingDelete(null);
   };
@@ -515,51 +411,22 @@ const McpManager: React.FC = () => {
   const handleToggleRegistryEnabled = async (
     registryId: string,
     registryServers: McpServerConfig[],
-    registryEntry?: McpRegistryEntry,
   ) => {
     const targetEnabled = !registryServers.some(server => server.enabled);
-    reportMcpAction('toggle_enabled', {
-      source: 'mcp_manager',
-      activeTab,
-      targetEnabled,
-      ...(registryEntry
-        ? getRegistryAnalyticsParams(registryEntry)
-        : { registryId, mcpName: registryId }),
-    });
+    
     try {
       const updatedServers = await mcpService.setRegistryEnabled(registryId, targetEnabled);
       dispatch(setMcpServers(updatedServers));
       setActionError('');
-      reportMcpAction('toggle_enabled_success', {
-        source: 'mcp_manager',
-        activeTab,
-        targetEnabled,
-        result: 'success',
-        ...(registryEntry
-          ? getRegistryAnalyticsParams(registryEntry)
-          : { registryId, mcpName: registryId }),
-      });
+      
     } catch (error) {
       setActionError(error instanceof Error ? error.message : i18nService.t('mcpUpdateFailed'));
-      reportMcpAction('toggle_enabled_failed', {
-        source: 'mcp_manager',
-        activeTab,
-        targetEnabled,
-        result: 'failed',
-        errorCode: 'toggle_failed',
-        ...(registryEntry
-          ? getRegistryAnalyticsParams(registryEntry)
-          : { registryId, mcpName: registryId }),
-      });
+      
     }
   };
 
   const handleOpenEditForm = (server: McpServerConfig) => {
-    reportMcpAction('edit_open', {
-      source: 'mcp_manager',
-      activeTab,
-      ...getServerAnalyticsParams(server, getRegistryEntryForServer(server)),
-    });
+    
     setEditingServer(server);
     setInstallingRegistry(getRegistryEntryForServer(server) ?? null);
     setIsFormOpen(true);
@@ -587,28 +454,14 @@ const McpManager: React.FC = () => {
   ];
 
   const handleInstallFromRegistry = (entry: McpRegistryEntry) => {
-    reportMcpAction('marketplace_install_open', {
-      source: 'mcp_manager',
-      activeTab,
-      activeCategory,
-      ...getRegistryAnalyticsParams(entry),
-    });
+    
     setEditingServer(null);
     setInstallingRegistry(entry);
     setIsFormOpen(true);
   };
 
   const handleCloseForm = () => {
-    reportMcpAction('form_close', {
-      source: 'mcp_manager',
-      activeTab,
-      mode: editingServer ? 'edit' : installingRegistry ? 'marketplace_install' : 'create',
-      ...(editingServer
-        ? getServerAnalyticsParams(editingServer, getRegistryEntryForServer(editingServer))
-        : installingRegistry
-          ? getRegistryAnalyticsParams(installingRegistry)
-          : {}),
-    });
+    
     setIsFormOpen(false);
     setEditingServer(null);
     setInstallingRegistry(null);
@@ -617,63 +470,30 @@ const McpManager: React.FC = () => {
   const handleSaveForm = async (data: McpServerFormData) => {
     setActionError('');
     if (editingServer && editingServer.id) {
-      reportMcpAction('edit_submit', {
-        source: 'mcp_manager',
-        activeTab,
-        ...getServerAnalyticsParams(editingServer, getRegistryEntryForServer(editingServer)),
-        ...getFormAnalyticsParams(data, installingRegistry),
-      });
+      
       const result = await mcpService.updateServer(editingServer.id, data);
       if (!result.success) {
         setActionError(result.error || i18nService.t('mcpUpdateFailed'));
-        reportMcpAction('edit_failed', {
-          source: 'mcp_manager',
-          activeTab,
-          result: 'failed',
-          errorCode: 'edit_failed',
-          ...getServerAnalyticsParams(editingServer, getRegistryEntryForServer(editingServer)),
-          ...getFormAnalyticsParams(data, installingRegistry),
-        });
+        
         return;
       }
       if (result.servers) {
         dispatch(setMcpServers(result.servers));
       }
-      reportMcpAction('edit_success', {
-        source: 'mcp_manager',
-        activeTab,
-        result: 'success',
-        ...getServerAnalyticsParams(editingServer, getRegistryEntryForServer(editingServer)),
-        ...getFormAnalyticsParams(data, installingRegistry),
-      });
+      
     } else {
       const isRegistryInstall = installingRegistry !== null;
-      reportMcpAction('create_submit', {
-        source: 'mcp_manager',
-        activeTab,
-        ...getFormAnalyticsParams(data, installingRegistry),
-      });
+      
       const result = await mcpService.createServer(data);
       if (!result.success) {
         setActionError(result.error || i18nService.t('mcpCreateFailed'));
-        reportMcpAction('create_failed', {
-          source: 'mcp_manager',
-          activeTab,
-          result: 'failed',
-          errorCode: 'create_failed',
-          ...getFormAnalyticsParams(data, installingRegistry),
-        });
+        
         return;
       }
       if (result.servers) {
         dispatch(setMcpServers(result.servers));
       }
-      reportMcpAction('create_success', {
-        source: 'mcp_manager',
-        activeTab,
-        result: 'success',
-        ...getFormAnalyticsParams(data, installingRegistry),
-      });
+      
       // A hand-added server lands in Installed, so go show it. Installing from
       // the marketplace leaves the user where they were browsing.
       if (!isRegistryInstall) setActiveTab(McpTab.Installed);
@@ -685,24 +505,14 @@ const McpManager: React.FC = () => {
     list: McpServerFormData[],
   ): Promise<{ success: boolean; error?: string }> => {
     setActionError('');
-    reportMcpAction('json_import_submit', {
-      source: 'mcp_manager',
-      activeTab,
-      serverCount: list.length,
-    });
+    
     let latestServers: McpServerConfig[] | undefined;
     for (const data of list) {
       const result = await mcpService.createServer(data);
       if (!result.success) {
         // Keep the servers created before the failure visible in the UI.
         if (latestServers) dispatch(setMcpServers(latestServers));
-        reportMcpAction('json_import_failed', {
-          source: 'mcp_manager',
-          activeTab,
-          result: 'failed',
-          errorCode: 'json_import_failed',
-          serverCount: list.length,
-        });
+        
         return {
           success: false,
           error: `${data.name}: ${result.error || i18nService.t('mcpCreateFailed')}`,
@@ -711,22 +521,14 @@ const McpManager: React.FC = () => {
       latestServers = result.servers ?? latestServers;
     }
     if (latestServers) dispatch(setMcpServers(latestServers));
-    reportMcpAction('json_import_success', {
-      source: 'mcp_manager',
-      activeTab,
-      result: 'success',
-      serverCount: list.length,
-    });
+    
     setActiveTab(McpTab.Installed);
     handleCloseForm();
     return { success: true };
   };
 
   const handleOpenCreateForm = () => {
-    reportMcpAction('custom_create_open', {
-      source: 'mcp_manager',
-      activeTab,
-    });
+    
     setEditingServer(null);
     setInstallingRegistry(null);
     setIsFormOpen(true);
@@ -745,30 +547,17 @@ const McpManager: React.FC = () => {
   };
 
   const openServerDetail = (server: McpServerConfig) => {
-    reportMcpAction('open_detail', {
-      source: 'mcp_manager',
-      activeTab,
-      ...getServerAnalyticsParams(server, getRegistryEntryForServer(server)),
-    });
+    
     setDetailTarget({ kind: 'server', id: server.id });
   };
 
   const openRegistryGroupDetail = (item: RegistryGroupItem) => {
-    reportMcpAction('open_detail', {
-      source: 'mcp_manager',
-      activeTab,
-      registryId: item.registryId,
-    });
+    
     setDetailTarget({ kind: 'registryGroup', registryId: item.registryId });
   };
 
   const openMarketplaceDetail = (entry: McpRegistryEntry) => {
-    reportMcpAction('open_detail', {
-      source: 'mcp_manager',
-      activeTab,
-      activeCategory,
-      ...getRegistryAnalyticsParams(entry),
-    });
+    
     setDetailTarget({ kind: 'marketplace', entryId: entry.id });
   };
 
@@ -1006,7 +795,6 @@ const McpManager: React.FC = () => {
             {renderDetailToggle(groupEnabled, () => handleToggleRegistryEnabled(
               item.registryId,
               item.servers,
-              item.registryEntry,
             ))}
             <button
               type="button"
@@ -1174,15 +962,7 @@ const McpManager: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  reportMcpAction('clear_search', {
-                    source: 'mcp_manager',
-                    activeTab,
-                    activeCategory,
-                    searchKeywordLength: searchQuery.trim().length,
-                    resultCount: activeTab === McpTab.Marketplace
-                      ? filteredMarketplace.length
-                      : filteredInstalled.length,
-                  });
+                  
                   setSearchQuery('');
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-secondary hover:text-primary transition-colors"
@@ -1213,11 +993,7 @@ const McpManager: React.FC = () => {
                 key={tab}
                 type="button"
                 onClick={() => {
-                  reportMcpAction('tab_change', {
-                    source: 'mcp_manager',
-                    activeTab,
-                    targetTab: tab,
-                  });
+                  
                   setActiveTab(tab);
                 }}
                 className={tabClass(tab)}
@@ -1242,13 +1018,7 @@ const McpManager: React.FC = () => {
                 key={cat.id}
                 type="button"
                 onClick={() => {
-                  reportMcpAction('category_change', {
-                    source: 'mcp_manager',
-                    activeTab,
-                    activeCategory,
-                    targetCategory: cat.id,
-                    resultCount: filteredMarketplace.length,
-                  });
+                  
                   setActiveCategory(cat.id);
                 }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
@@ -1281,11 +1051,7 @@ const McpManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    reportMcpAction('tab_change', {
-                      source: 'mcp_manager',
-                      activeTab,
-                      targetTab: McpTab.Marketplace,
-                    });
+                    
                     setActiveTab(McpTab.Marketplace);
                   }}
                   className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-raised"
@@ -1342,7 +1108,6 @@ const McpManager: React.FC = () => {
                           onToggle={() => handleToggleRegistryEnabled(
                             item.registryId,
                             item.servers,
-                            item.registryEntry,
                           )}
                         />
                       </>

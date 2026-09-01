@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 
-import { ProviderAuthType, ProviderName } from '../../shared/providers';
 import {
   classifyAppConfigChange,
   classifyCoworkConfigChange,
@@ -89,36 +88,6 @@ describe('OpenClaw config impact classification', () => {
 
     expect(result.impact).toBe(OpenClawConfigImpact.Restart);
     expect(result.reasons).toEqual([OpenClawConfigImpactReason.AppProviderSecret]);
-  });
-
-  test('ignores GitHub Copilot short token changes', () => {
-    const result = classifyAppConfigChange(
-      {
-        providers: {
-          [ProviderName.Copilot]: {
-            enabled: true,
-            authType: ProviderAuthType.OAuth,
-            apiKey: 'copilot-old',
-            baseUrl: 'https://api.githubcopilot.com',
-          },
-        },
-      },
-      {
-        providers: {
-          [ProviderName.Copilot]: {
-            enabled: true,
-            authType: ProviderAuthType.OAuth,
-            apiKey: 'copilot-new',
-            baseUrl: 'https://api.githubcopilot.com',
-          },
-        },
-      },
-    );
-
-    expect(result).toEqual({
-      impact: OpenClawConfigImpact.None,
-      reasons: [],
-    });
   });
 
   test('does not treat blank provider secrets as restart-only changes', () => {

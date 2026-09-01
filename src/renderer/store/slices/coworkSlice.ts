@@ -37,27 +37,6 @@ import {
   CoworkSessionStatusValue,
   type CoworkSessionSummary,
 } from '../../types/cowork';
-// Local structural types for the media-generation model catalog and per-draft
-// selection. These shapes were previously imported from the removed
-// `types/mediaGeneration` module; they are inlined here so the slice state and
-// reducers keep their types.
-type MediaModel = {
-  modelId: string;
-  displayName: string;
-  provider: string;
-  mediaType: 'image' | 'video';
-  generationTimeout?: number;
-  pricing?: Record<string, unknown>;
-};
-
-type MediaGenerationSelection = {
-  mode: 'auto' | 'image' | 'video' | 'none';
-  modelId?: string;
-  modelName?: string;
-  imageModelId?: string;
-  videoModelId?: string;
-};
-
 import { removeSessionFromState, removeSessionsFromState } from './coworkDeleteState';
 
 export interface DraftAttachment {
@@ -130,12 +109,6 @@ interface CoworkState {
   remoteManaged: boolean;
   pendingPermissions: CoworkPermissionRequest[];
   config: CoworkConfig;
-  /** Media generation models fetched from server */
-  mediaModels: { image: MediaModel[]; video: MediaModel[] };
-  /** Account that owns the current media model cache */
-  mediaModelsOwnerAccountKey: string | null;
-  /** Media generation mode selection per draft key */
-  mediaSelection: Record<string, MediaGenerationSelection>;
   pendingMediaStatusUpdates: Record<string, Array<{ toolCallId: string; details: Record<string, unknown> }>>;
 }
 
@@ -197,9 +170,6 @@ const initialState: CoworkState = {
       keepAlive: '30d',
     },
   },
-  mediaModels: { image: [], video: [] },
-  mediaModelsOwnerAccountKey: null,
-  mediaSelection: {},
   pendingMediaStatusUpdates: {},
 };
 
@@ -1499,35 +1469,6 @@ const coworkSlice = createSlice({
       }
     },
 
-    setMediaModels(state, action: PayloadAction<{
-      image: MediaModel[];
-      video: MediaModel[];
-      ownerAccountKey: string;
-    }>) {
-      state.mediaModels = {
-        image: action.payload.image,
-        video: action.payload.video,
-      };
-      state.mediaModelsOwnerAccountKey = action.payload.ownerAccountKey;
-    },
-
-    setMediaSelection(state, action: PayloadAction<{ draftKey: string; selection: MediaGenerationSelection }>) {
-      const { draftKey, selection } = action.payload;
-      if (selection.mode === 'none') {
-        delete state.mediaSelection[draftKey];
-      } else {
-        state.mediaSelection[draftKey] = selection;
-      }
-    },
-
-    clearMediaAccountState(state) {
-      state.mediaModels = { image: [], video: [] };
-      state.mediaModelsOwnerAccountKey = null;
-      state.mediaSelection = {};
-      state.pendingMediaStatusUpdates = {};
-      state.pendingSteers = {};
-      state.rejectedSteers = {};
-    },
   },
 });
 
@@ -1601,9 +1542,6 @@ export const {
   setDraftKitIds,
   setDraftSkillIds,
   setDraftCollaborationMode,
-  clearMediaAccountState,
-  setMediaModels,
-  setMediaSelection,
 } = coworkSlice.actions;
 
 export default coworkSlice.reducer;

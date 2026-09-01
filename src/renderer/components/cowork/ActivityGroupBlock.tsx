@@ -1,14 +1,12 @@
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import React, { useMemo, useState } from 'react';
 
-import { bucketCount, reportConversationBlockAction } from './conversationAnalytics';
 import { computeDiffStats, type DiffStats, extractDiffFromToolInput } from './DiffView';
 import {
   type ActivityChunkEntry,
   type ConsolidatedItem,
   getActivityCurrentActionText,
   getActivityGroupHeaderLabel,
-  getActivityGroupSummary,
   isMediaGenerateRunning,
   isMediaStatusPollRunning,
   normalizeToolName,
@@ -80,7 +78,6 @@ const ActivityGroupBlock: React.FC<{
   const [isExpanded, setIsExpanded] = useState(false);
 
   const items = useMemo(() => entries.map((entry) => entry.item), [entries]);
-  const summary = useMemo(() => getActivityGroupSummary(items), [items]);
   const diffStats = useMemo(() => getActivityGroupDiffStats(items), [items]);
 
   const lastItem = items[items.length - 1];
@@ -91,16 +88,6 @@ const ActivityGroupBlock: React.FC<{
 
   const handleToggle = () => {
     const nextExpanded = !isExpanded;
-    reportConversationBlockAction({
-      actionType: nextExpanded ? 'activity_group_expand' : 'activity_group_collapse',
-      blockType: 'activity_group',
-      params: {
-        stepCount: summary.stepCount,
-        stepCountBucket: bucketCount(summary.stepCount),
-        itemCount: entries.length,
-        isStreaming: isStreamingTail,
-      },
-    });
     setIsExpanded(nextExpanded);
   };
 

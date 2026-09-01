@@ -16,10 +16,6 @@ import {
   OpenClawSessionReasoningLevel,
 } from '../../../common/openclawSession';
 import {
-  PromptAnalyticsConversationState,
-  type PromptAnalyticsConversationState as PromptAnalyticsConversationStateValue,
-} from '../../../shared/analytics/constants';
-import {
   buildBrowserAnnotationPromptSection,
   type CoworkBrowserAnnotationMessageBatch,
 } from '../../../shared/cowork/browserAnnotations';
@@ -105,7 +101,6 @@ import {
 } from '../openclawHistory';
 import { buildOpenClawLocalTimeContextPrompt } from '../openclawLocalTimeContextPrompt';
 import { resolveOpenClawThinkingLevelForModel } from '../openclawModelThinkingLevels';
-import { consumeRecentOpenClawTokenProxyQuotaError } from '../openclawTokenProxy';
 import {
   findRedundantFinalPrefixMessageId,
   findReusableCommittedAssistantMessageId,
@@ -1515,18 +1510,6 @@ function classifyOpenClawSafeRuntimeErrorMetadata(
   return null;
 }
 
-function isEgoAILoginExpiredMetadata(
-  metadata: OpenClawSafeRuntimeErrorMetadata | undefined,
-): boolean {
-  if (metadata?.provider?.trim() !== ProviderName.EgoaiServer) return false;
-  if (metadata.httpCode?.trim() === '403') return false;
-  if (metadata.providerRuntimeFailureKind?.trim() === 'auth_scope') return false;
-  return metadata.httpCode?.trim() === '401'
-    || metadata.failoverReason?.trim() === 'auth'
-    || metadata.providerRuntimeFailureKind?.trim() === 'auth_refresh'
-    || metadata.providerRuntimeFailureKind?.trim() === 'auth_invalid_token';
-}
-
 export function resolveOpenClawRuntimeErrorMessage(
   errorMessage: string,
   metadata?: OpenClawSafeRuntimeErrorMetadata,
@@ -1552,36 +1535,17 @@ export function resolveOpenClawRuntimeError(
   // OpenClaw's friendly wrapper may already say "rate limit" even when its
   // preserved raw metadata identifies a provider-capacity failure.
   if (metadataClassifiedKey === CoworkErrorI18nKey.ModelOverloaded) {
-    consumeRecentOpenClawTokenProxyQuotaError();
     return buildResolvedRuntimeError(t(metadataClassifiedKey));
   }
   const classifiedKey = classifyErrorKey(normalized);
 
   if (classifiedKey) {
-    if (
-      isEgoAILoginExpiredMetadata(metadata)
-      && (
-        classifiedKey === CoworkErrorI18nKey.AuthInvalid
-        || classifiedKey === CoworkErrorI18nKey.OAuthInvalid
-      )
-    ) {
-      return buildResolvedRuntimeError(t(CoworkErrorI18nKey.LobsterAILoginExpired));
-    }
     return buildResolvedRuntimeError(t(classifiedKey));
   }
 
   if (isOpenClawGenericLlmRequestFailed(normalized)) {
-    if (isEgoAILoginExpiredMetadata(metadata)) {
-      consumeRecentOpenClawTokenProxyQuotaError();
-      return buildResolvedRuntimeError(t(CoworkErrorI18nKey.LobsterAILoginExpired));
-    }
     if (metadataClassifiedKey) {
-      consumeRecentOpenClawTokenProxyQuotaError();
       return buildResolvedRuntimeError(t(metadataClassifiedKey));
-    }
-    const recentQuotaError = consumeRecentOpenClawTokenProxyQuotaError();
-    if (recentQuotaError) {
-      return buildResolvedRuntimeError(t(CoworkErrorI18nKey.QuotaExhausted));
     }
   }
 

@@ -115,8 +115,11 @@ vi.mock('./openclawLocalExtensions', () => ({
   },
 }));
 
-vi.mock('./openclawTokenProxy', () => ({
-  getOpenClawTokenProxyPort: () => mockRuntimeState.proxyPort,
+vi.mock('./coworkOpenAICompatProxy', () => ({
+  getCoworkOpenAICompatProxyBaseURL: () => (
+    mockRuntimeState.proxyPort ? `http://127.0.0.1:${mockRuntimeState.proxyPort}` : null
+  ),
+  getCoworkOpenAICompatProxyToken: () => 'proxy-token',
 }));
 
 describe('OpenClawConfigSync runtime config output', () => {

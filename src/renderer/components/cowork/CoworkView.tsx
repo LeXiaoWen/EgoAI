@@ -34,7 +34,6 @@ import {
 } from '../../types/cowork';
 import { applyOptimisticGoalCommand } from '../../utils/goalCommand';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
-import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { ModelAccessPromptKind, ModelAccessPromptModal } from '../ModelSelector';
@@ -47,7 +46,6 @@ import { resolveModelThinkingLevel, useAgentSelectedModel } from './agentModelSe
 import { CoworkUiEvent } from './constants';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import CoworkSessionDetail from './CoworkSessionDetail';
-import { reportPromptTemplateAction } from './promptAnalytics';
 import { buildCoworkContinuationSystemPrompt, buildCoworkSystemPrompt } from './skillSystemPrompt';
 
 // Time-aware hero greeting: the brand mark stays as the logo, so the heading
@@ -119,7 +117,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const currentSession = useSelector(selectCurrentSession);
   const sessionNavigationTargetId = useSelector(selectSessionNavigationTargetId);
   const isStreaming = useSelector(selectIsStreaming);
-  const isLoggedIn = useSelector((state: RootState) => state.auth.isLoggedIn);
   const currentSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -148,9 +145,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     currentAgentSelectedModel,
     currentAgent?.thinkingLevel,
   );
-  const homeDraftCollaborationMode = useSelector((state: RootState) => (
-    state.cowork.draftCollaborationModes.__home__ || CoworkCollaborationMode.Default
-  ));
 
   const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
     return buildCoworkCapabilitySelection(
@@ -297,9 +291,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         if (apiConfig && !apiConfig.hasConfig) {
           // No usable model config: steer toward plan models (login/subscribe)
           // rather than opening the custom-model settings page uninvited.
-          setModelAccessPrompt(
-            isLoggedIn ? ModelAccessPromptKind.Subscribe : ModelAccessPromptKind.Login,
-          );
+          setModelAccessPrompt(ModelAccessPromptKind.Login);
           isStartingRef.current = false;
           return false;
         }
@@ -374,8 +366,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                 ...(imageAttachmentPreviews?.length ? { imageAttachmentPreviews } : {}),
               }
               : undefined,
-          },
-        ],
+          }],
         messagesOffset: 0,
         totalMessages: 1,
       };
@@ -598,23 +589,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     if (action) {
       const targetSkill = skills.find(s => s.id === action.skillMapping);
       console.debug(`[CoworkView] reporting prompt template analytics: template_card_click ${action.id}`);
-      reportPromptTemplateAction({
-        templateActionType: 'template_card_click',
-        templateId: action.id,
-        templateName: action.label,
-        templateIndex: quickActions.findIndex(item => item.id === action.id),
-        mappedSkillId: action.skillMapping,
-        mappedSkillName: targetSkill?.name,
-        hasAutoEnabledSkill: Boolean(targetSkill),
-        params: {
-          promptCount: action.prompts.length,
-          modelId: currentAgentSelectedModel?.id,
-          modelName: currentAgentSelectedModel?.name,
-          agentId: currentAgentId,
-          isMainAgent: currentAgentId === 'main',
-          isPlanMode: homeDraftCollaborationMode === CoworkCollaborationMode.Plan,
-        },
-      });
+      
       if (targetSkill) {
         dispatch(setActiveSkillIds([targetSkill.id]));
       }
@@ -636,32 +611,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   }, [activeSkillIds, dispatch, quickActions, selectedActionId, skills]);
 
   // Handle prompt selection from QuickAction
-  const handleQuickActionPromptSelect = (prompt: string, promptId?: string) => {
-    if (selectedAction) {
-      const selectedPrompt = selectedAction.prompts.find(item => item.id === promptId);
-      const targetSkill = skills.find(skill => skill.id === selectedAction.skillMapping);
-      console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${selectedAction.id}/${promptId ?? 'unknown'}`);
-      reportPromptTemplateAction({
-        templateActionType: 'template_prompt_click',
-        templateId: selectedAction.id,
-        templateName: selectedAction.label,
-        templateIndex: quickActions.findIndex(item => item.id === selectedAction.id),
-        mappedSkillId: selectedAction.skillMapping,
-        mappedSkillName: targetSkill?.name,
-        promptId,
-        promptName: selectedPrompt?.label,
-        promptIndex: selectedAction.prompts.findIndex(item => item.id === promptId),
-        promptLength: prompt.length,
-        hasAutoEnabledSkill: activeSkillIds.includes(selectedAction.skillMapping),
-        params: {
-          modelId: currentAgentSelectedModel?.id,
-          modelName: currentAgentSelectedModel?.name,
-          agentId: currentAgentId,
-          isMainAgent: currentAgentId === 'main',
-          isPlanMode: homeDraftCollaborationMode === CoworkCollaborationMode.Plan,
-        },
-      });
-    }
+  const handleQuickActionPromptSelect = (prompt: string) => {
     // Fill the prompt into input
     promptInputRef.current?.setValue(prompt, 'template');
     promptInputRef.current?.focus();
@@ -900,7 +850,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                     />
                   </div>
                 )}
-                <CreditsResetCampaignFloat />
               </div>
 
               <div aria-hidden="true" className="w-full min-h-[24px] flex-[3_0_0px]" />
@@ -909,10 +858,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         </>
       )}
       {modelAccessPrompt && (
-        <ModelAccessPromptModal
-          promptKind={modelAccessPrompt}
-          onClose={() => setModelAccessPrompt(null)}
-        />
+        <ModelAccessPromptModal onClose={() => setModelAccessPrompt(null)} />
       )}
     </div>
   );

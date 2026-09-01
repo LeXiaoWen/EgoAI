@@ -3,8 +3,6 @@ import { configureStore } from '@reduxjs/toolkit';
 import { libraryArtifactListener } from './libraryArtifactListener';
 import agentReducer from './slices/agentSlice';
 import artifactReducer from './slices/artifactSlice';
-import asrQuotaReducer from './slices/asrQuotaSlice';
-import authReducer from './slices/authSlice';
 import coworkReducer from './slices/coworkSlice';
 import kitReducer from './slices/kitSlice';
 import mcpReducer from './slices/mcpSlice';
@@ -20,8 +18,6 @@ export const store = configureStore({
     mcp: mcpReducer,
     quickAction: quickActionReducer,
     agent: agentReducer,
-    asrQuota: asrQuotaReducer,
-    auth: authReducer,
     artifact: artifactReducer,
     kit: kitReducer,
   },

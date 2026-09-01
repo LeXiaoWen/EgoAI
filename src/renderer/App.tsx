@@ -11,7 +11,6 @@ import {
   isManualDownloadUrl,
 } from '../shared/appUpdate/constants';
 import type { LibrarySessionRef } from '../shared/library/types';
-import { OpenClawEnginePhase } from '../shared/openclawEngine/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry } from '../shared/providers';
 import { SIDEBAR_TASK_FILTER_ENABLED } from './components/agentSidebar/SidebarTaskFilterButton';
 import { CoworkView } from './components/cowork';
@@ -54,7 +53,6 @@ import { defaultConfig, getProviderDisplayName, ShortcutAction } from './config'
 import { SkinProvider } from './providers/SkinProvider';
 import type { ApiConfig } from './services/api';
 import { apiService } from './services/api';
-import { authService } from './services/auth';
 import { configService } from './services/config';
 import { coworkService } from './services/cowork';
 import { i18nService } from './services/i18n';
@@ -63,7 +61,6 @@ import {
   invalidateLatestAsyncRequest,
   isLatestAsyncRequest,
 } from './services/latestAsyncRequest';
-import { LogReporterAction, reportYdAnalyzer } from './services/logReporter';
 import { isTextEditingSafeShortcut, matchesShortcut } from './services/shortcuts';
 import { themeService } from './services/theme';
 import { applyTypographyPreferences } from './services/typography';
@@ -165,9 +162,6 @@ const App: React.FC = () => {
   const [isTaskFilterActive, setIsTaskFilterActive] = useState(false);
   const [hasUnreadCompletedTasks, setHasUnreadCompletedTasks] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(244);
-  const [isEngineStartupOverlayVisible, setIsEngineStartupOverlayVisible] = useState(
-    () => coworkService.getOpenClawEngineStatusSnapshot()?.phase === OpenClawEnginePhase.Starting,
-  );
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
     source: null,
@@ -178,14 +172,11 @@ const App: React.FC = () => {
     errorMessage: null,
   });
   const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [isUpdateCardExpanded, setIsUpdateCardExpanded] = useState(false);
   const [isUserInitiatedUpdateFlowActive, setIsUserInitiatedUpdateFlowActive] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState<boolean | null>(null);
-  const [welcomeLoginPending, setWelcomeLoginPending] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
   const askAiFocusTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
-  const hasReportedAppStartedRef = useRef(false);
   const initPassRunningRef = useRef(false);
   const initRetryTimerRef = useRef<number | null>(null);
   const initAutoRetryCountRef = useRef(0);
@@ -201,7 +192,6 @@ const App: React.FC = () => {
   const currentSessionId = useSelector(selectCurrentSessionId);
   const pendingPermission = useSelector(selectFirstCurrentSessionPendingPermission);
   const pendingPermissions = useSelector(selectPendingPermissions);
-  const authUser = useSelector((state: RootState) => state.auth.user);
   const isWindows = window.electron.platform === 'win32';
   const [minimizedPermissionIds, setMinimizedPermissionIds] = useState<string[]>([]);
   const isPendingPermissionMinimized = pendingPermission
@@ -212,30 +202,6 @@ const App: React.FC = () => {
     isUserInitiatedUpdateFlowActive,
     appUpdateState.status,
   );
-
-  useEffect(() => {
-    let isCurrent = true;
-    const resolveOverlayVisible = (phase?: string | null) =>
-      phase === OpenClawEnginePhase.Starting;
-
-    coworkService.getOpenClawEngineStatus()
-      .then((status) => {
-        if (!isCurrent) return;
-        setIsEngineStartupOverlayVisible(resolveOverlayVisible(status?.phase));
-      })
-      .catch((error) => {
-        console.debug('[App] failed to refresh OpenClaw engine status for sidebar promo timing:', error);
-      });
-
-    const unsubscribe = coworkService.onOpenClawEngineStatus((status) => {
-      setIsEngineStartupOverlayVisible(resolveOverlayVisible(status.phase));
-    });
-
-    return () => {
-      isCurrent = false;
-      unsubscribe();
-    };
-  }, []);
 
   const waitWithTimeout = useCallback(
     async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -358,21 +324,13 @@ const App: React.FC = () => {
       return false;
     };
 
-    const finishShell = (providerModelCount: number, readyLabel: string) => {
+    const finishShell = (readyLabel: string) => {
       if (!requiredStartupGatesReadyRef.current) {
         throw new Error('Required privacy startup gate is unresolved.');
       }
       setIsInitialized(true);
       setInitError(null);
       mark(readyLabel);
-      if (!hasReportedAppStartedRef.current) {
-        hasReportedAppStartedRef.current = true;
-        void reportYdAnalyzer({
-          action: LogReporterAction.AppStarted,
-          providerModelCount,
-          hasLoggedInUser: !!store.getState().auth.user?.yid,
-        });
-      }
     };
 
     try {
@@ -457,25 +415,13 @@ const App: React.FC = () => {
         });
         mark(i18nReady ? 'i18nService.initialize done' : 'i18nService.initialize degraded — using persisted language hint');
 
-        // Single attempt: authService.init() re-entry tears down listeners, so a
-        // concurrent retry could stack them; its in-flight run self-completes
-        // once IPC recovers.
-        mark('authService.init begin');
-        const authReady = await runStep('authService.init', () => authService.init(), {
-          attempts: 1,
-          firstTimeoutMs: INIT_STEP_RETRY_TIMEOUT_MS,
-        });
-        mark(authReady ? 'authService.init done' : 'authService.init pending (auth restore completes in background)');
         coreStartupServicesInitializedRef.current = true;
       }
 
-      const providerModels = applyConfigToApp(mark);
+      applyConfigToApp(mark);
       mark('model resolution done');
 
-      finishShell(
-        providerModels.length,
-        configReady ? 'shell ready' : 'shell ready (degraded: default config)',
-      );
+      finishShell(configReady ? 'shell ready' : 'shell ready (degraded: default config)');
 
       if (!configReady) {
         // Schedule only after the startup pass releases its in-flight guard;
@@ -545,31 +491,11 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (authUser) {
-      void authService.fetchProfileSummary();
-    }
-  }, [authUser]);
-
-  // Listen for Copilot token auto-refresh events from the main process
-  useEffect(() => {
-    const removeListener = window.electron.githubCopilot.onTokenUpdated(({ token, baseUrl }) => {
-      console.log('[App] received Copilot token update from main process');
-      apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
-        apiKey: token,
-        ...(baseUrl ? { baseUrl } : {}),
-      });
-    });
-    return removeListener;
-  }, []);
-
   // Network status monitoring
   useEffect(() => {
     const handleOnline = () => {
       console.log('[Renderer] Network online');
       window.electron.networkStatus.send('online');
-      // A startup load that failed while offline has no other retry trigger.
-      void authService.refreshServerModels();
     };
 
     const handleOffline = () => {
@@ -707,13 +633,6 @@ const App: React.FC = () => {
     } catch {
       // Logging should never block sidebar interactions.
     }
-    void reportYdAnalyzer({
-      action: LogReporterAction.SidebarAction,
-      source: 'home_sidebar',
-      actionType: isSidebarCollapsed ? 'expand_sidebar' : 'collapse_sidebar',
-      activeView: mainView,
-      isCollapsed: isSidebarCollapsed,
-    });
     setIsSidebarCollapsed((prev) => !prev);
   }, [isSidebarCollapsed, mainView]);
 
@@ -726,25 +645,10 @@ const App: React.FC = () => {
     } catch {
       // Diagnostics must never block the sidebar interaction.
     }
-    void reportYdAnalyzer({
-      action: LogReporterAction.SidebarAction,
-      source: 'home_sidebar',
-      actionType: 'task_filter_toggle',
-      activeView: mainView,
-      isCollapsed: isSidebarCollapsed,
-      targetSelected: nextActive,
-    });
     setIsTaskFilterActive(nextActive);
   }, [hasUnreadCompletedTasks, isSidebarCollapsed, isTaskFilterActive, mainView]);
 
   const handleOpenTaskSearch = useCallback(() => {
-    void reportYdAnalyzer({
-      action: LogReporterAction.SidebarAction,
-      source: 'home_sidebar',
-      actionType: 'open_search',
-      activeView: mainView,
-      isCollapsed: isSidebarCollapsed,
-    });
     window.dispatchEvent(new CustomEvent<CoworkTaskSearchRequestEventDetail>(
       CoworkUiEvent.ShortcutSearch,
       { detail: { source: CoworkTaskSearchRequestSource.WindowsTitleBar } },
@@ -896,7 +800,7 @@ const App: React.FC = () => {
 
   const runUpdateCheck = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await window.electron.appUpdate.checkNow({ userId: authUser?.yid });
+      const result = await window.electron.appUpdate.checkNow();
       setAppUpdateState(result.state);
       if (!result.success) {
         console.error('[App] app update check failed:', result.error);
@@ -907,7 +811,7 @@ const App: React.FC = () => {
       console.error('Failed to check app update:', error);
       return false;
     }
-  }, [authUser]);
+  }, []);
 
   const updateInfo = appUpdateState.info;
 
@@ -1034,33 +938,11 @@ const App: React.FC = () => {
     setPrivacyAgreed(true);
   }, []);
 
-  // Login keeps the welcome gate on screen while the browser flow runs; the
-  // effect below releases the gate only once the user is actually logged in.
-  const handleWelcomeLogin = useCallback(async () => {
-    setWelcomeLoginPending(true);
-    try {
-      await authService.login();
-    } catch (error) {
-      console.error('[App] welcome login failed before browser handoff:', error);
-      setWelcomeLoginPending(false);
-      showToast(i18nService.t('welcomeLoginFailed'));
-    }
-  }, [showToast]);
-  const handleWelcomeCancelLogin = useCallback(() => {
-    setWelcomeLoginPending(false);
-  }, []);
+  // Continuing from the welcome screen counts as accepting the agreement.
   const handleWelcomeCustomModel = useCallback(async () => {
     await acceptPrivacyAgreement();
     handleShowSettings({ initialTab: 'model' });
   }, [acceptPrivacyAgreement, handleShowSettings]);
-
-  // Release the first-launch gate once login completes — including when the
-  // browser callback lands after the user tapped back on the welcome screen.
-  useEffect(() => {
-    if (privacyAgreed === false && authUser) {
-      void acceptPrivacyAgreement();
-    }
-  }, [privacyAgreed, authUser, acceptPrivacyAgreement]);
 
   const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
     if (!pendingPermission) return;
@@ -1570,7 +1452,6 @@ const App: React.FC = () => {
       onUpdate={handleConfirmUpdate}
       onShowDetails={handleOpenUpdateModal}
       onCancelDownload={handleCancelDownload}
-      onExpandedChange={setIsUpdateCardExpanded}
     />
   ) : null;
   const canUseWindowsTopBarActions = isInitialized && !initError && !isUpdateInteractionBlocked;
@@ -1675,12 +1556,7 @@ const App: React.FC = () => {
             onClose={() => setToastMessage(null)}
           />
         )}
-        <WelcomeDialog
-          onLogin={handleWelcomeLogin}
-          loginPending={welcomeLoginPending}
-          onCancelLogin={handleWelcomeCancelLogin}
-          onCustomModel={handleWelcomeCustomModel}
-        />
+        <WelcomeDialog onCustomModel={handleWelcomeCustomModel} />
         <div className="draggable absolute inset-x-0 top-0 z-[70] h-9" />
         {isWindows && (
           <div className="absolute right-0 top-0 z-[80] h-9">
@@ -1728,8 +1604,6 @@ const App: React.FC = () => {
           onTaskFilterSummaryChange={setHasUnreadCompletedTasks}
           onWidthChange={setSidebarWidth}
           updateNotice={!isSidebarCollapsed && !isUpdateInteractionBlocked ? updateCard : null}
-          hideAdBanner={isUpdateCardExpanded}
-          isEngineStartupOverlayVisible={isEngineStartupOverlayVisible}
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div
@@ -1763,7 +1637,6 @@ const App: React.FC = () => {
               />
             ) : mainView === 'library' ? (
               <LibraryView
-                isAuthenticated={Boolean(authUser)}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onOpenSession={handleOpenLibrarySession}

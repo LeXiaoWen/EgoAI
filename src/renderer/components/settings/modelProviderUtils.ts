@@ -7,7 +7,6 @@ import {
   ModelRuntimeProfileSource,
   normalizeModelIdForComparison,
   OpenClawApi,
-  ProviderAuthType,
   ProviderName,
   ProviderRegistry,
   resolveModelRuntimeProfile,
@@ -69,36 +68,12 @@ export const getOpenClawProviderIdForConfig = (
 ): string => ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
 
 export const providerRequiresApiKey = (provider: ProviderType) => provider !== ProviderName.Ollama
-  && provider !== ProviderName.LmStudio
-  && provider !== ProviderName.Copilot;
+  && provider !== ProviderName.LmStudio;
 
 export const hasProviderAuthConfigured = (provider: ProviderType, config: ProviderConfig): boolean => {
   if (provider === ProviderName.Ollama || provider === ProviderName.LmStudio) {
     return true;
   }
-
-  if (provider === ProviderName.Minimax) {
-    if (config.authType === ProviderAuthType.ApiKey) {
-      return config.apiKey.trim().length > 0;
-    }
-    return (config.oauthAccessToken?.trim().length ?? 0) > 0;
-  }
-
-  if (provider === ProviderName.OpenAI && config.authType === ProviderAuthType.OAuth) {
-    return true;
-  }
-
-  // xAI OAuth: the credential lives in the OpenClaw auth-profiles store, not
-  // in the renderer config. Settings reconciles authType back to apikey when
-  // no credential exists (same pattern as OpenAI ChatGPT OAuth).
-  if (provider === ProviderName.Xai && config.authType === ProviderAuthType.OAuth) {
-    return true;
-  }
-
-  if (provider === ProviderName.Copilot) {
-    return config.authType === ProviderAuthType.OAuth;
-  }
-
   return config.apiKey.trim().length > 0;
 };
 
@@ -112,7 +87,7 @@ export const getFixedApiFormatForProvider = (provider: string): 'anthropic' | 'o
   if (provider === 'openai' || provider === 'stepfun') {
     return 'openai';
   }
-  if (provider === ProviderName.Youdaozhiyun || provider === ProviderName.Copilot || provider === ProviderName.Qianfan || provider === ProviderName.Xai) {
+  if (provider === ProviderName.Youdaozhiyun || provider === ProviderName.Qianfan || provider === ProviderName.Xai) {
     return 'openai';
   }
   if (provider === 'moonshot') {
@@ -230,10 +205,6 @@ export const buildOpenAICompatibleChatCompletionsUrl = (baseUrl: string, provide
       return `${betaBase}/openai/chat/completions`;
     }
     return `${normalized}/v1beta/openai/chat/completions`;
-  }
-
-  if (provider === ProviderName.Copilot) {
-    return `${normalized}/chat/completions`;
   }
 
   if (/\/v\d+$/.test(normalized)) {

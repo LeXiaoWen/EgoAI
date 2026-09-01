@@ -160,9 +160,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const dispatch = useDispatch();
   const currentSessionId = useSelector(selectCurrentSessionId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createAgentSource, setCreateAgentSource] = useState<'home_agent_sidebar' | 'home_agent_sidebar_empty'>(
-    'home_agent_sidebar',
-  );
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -625,7 +622,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
 
           <MyAgentSidebarHeader
             onCreateAgent={() => {
-              setCreateAgentSource('home_agent_sidebar');
               setIsCreateOpen(true);
             }}
           />
@@ -638,7 +634,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCreateAgentSource('home_agent_sidebar_empty');
                   setIsCreateOpen(true);
                 }}
                 className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
@@ -657,7 +652,6 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       <AgentCreateModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        source={createAgentSource}
       />
       <AgentSettingsPanel
         agentId={settingsAgentId}

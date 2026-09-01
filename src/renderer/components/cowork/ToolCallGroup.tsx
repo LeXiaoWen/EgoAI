@@ -6,11 +6,6 @@ import { useSelector } from 'react-redux';
 import mediaGeneratingAnimation from '../../assets/lottie/media-generating.json';
 import { i18nService } from '../../services/i18n';
 import { selectIsStreaming } from '../../store/selectors/coworkSelectors';
-import {
-  bucketLength,
-  getMessageLineCount,
-  reportConversationBlockAction,
-} from './conversationAnalytics';
 import DiffView, { extractDiffFromToolInput } from './DiffView';
 import {
   formatElapsedDuration,
@@ -171,30 +166,9 @@ const ToolCallGroup: React.FC<{
     [rawToolName, toolInput],
   );
   const isEditWithDiff = diffDataList !== null && diffDataList.length > 0;
-  const reportToolToggle = (nextExpanded: boolean) => {
-    const resultLength = toolResultDisplayRaw.length || collapsedToolResult?.text?.length || 0;
-    reportConversationBlockAction({
-      actionType: nextExpanded ? 'tool_expand' : 'tool_collapse',
-      blockType: 'tool',
-      params: {
-        toolName: rawToolName,
-        displayToolName: toolName,
-        hasResult: Boolean(toolResult),
-        hasResultText: Boolean(collapsedToolResult?.hasText || hasExpandedToolResultText),
-        isError: isToolError,
-        isStreaming: isSessionStreaming,
-        resultLengthBucket: bucketLength(resultLength),
-        resultLineCount: getMessageLineCount(toolResultDisplayRaw || collapsedToolResult?.text || ''),
-        isBashTool,
-        isTodoWriteTool,
-        isEditWithDiff,
-      },
-    });
-  };
 
   const handleToggle = () => {
     const nextExpanded = !isExpanded;
-    reportToolToggle(nextExpanded);
     setIsExpanded(nextExpanded);
   };
 

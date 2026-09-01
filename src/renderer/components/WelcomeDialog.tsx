@@ -13,20 +13,12 @@ const LOGO_RINGS: Array<{ size: number; opacity: number }> = [
 ];
 
 interface WelcomeDialogProps {
-  onLogin: () => void;
-  loginPending: boolean;
-  onCancelLogin: () => void;
   onCustomModel: () => void;
 }
 
-// First-launch gate merging terms consent and login into one screen:
-// continuing via either action counts as accepting the service agreement.
-const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
-  onLogin,
-  loginPending,
-  onCancelLogin,
-  onCustomModel,
-}) => {
+// First-launch gate for terms consent: accepting counts as agreeing to the
+// service agreement, then the user can configure their model provider.
+const WelcomeDialog: React.FC<WelcomeDialogProps> = ({ onCustomModel }) => {
   const handleTermsClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     await window.electron.shell.openExternal(SERVICE_TERMS_URL);
@@ -88,49 +80,15 @@ const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
           {i18nService.t('welcomeTitle')}
         </h1>
 
-        {/* actions area keeps a stable height across the idle and login-pending states */}
+        {/* actions area keeps a stable height */}
         <div className="flex min-h-[140px] w-full flex-col items-center">
-          {loginPending ? (
-            <>
-              {/* waiting for the browser login to complete — the gate stays until auth lands */}
-              <div className="flex h-11 items-center gap-2.5 text-sm text-secondary">
-                <div
-                  className="h-4 w-4 rounded-full border-2 border-border border-t-foreground animate-spin"
-                  aria-hidden="true"
-                />
-                {i18nService.t('welcomeLoginWaiting')}
-              </div>
-              <button
-                onClick={onCancelLogin}
-                className="mt-3 text-sm text-secondary hover:text-foreground underline underline-offset-2 outline-none"
-              >
-                {i18nService.t('back')}
-              </button>
-            </>
-          ) : (
-            <>
-              {/* promo: quiet tinted chip sitting right above login, so the incentive reads as "log in to get it" */}
-              <div className="mb-3 px-3 py-1 rounded-full border text-xs font-medium select-none text-[#E5482C] bg-[#FF5A36]/10 border-[#FF5A36]/20 dark:text-[#FF9275] dark:bg-[#FF6D4A]/[0.14] dark:border-[#FF6D4A]/30">
-                {i18nService.t('welcomePromo')}
-              </div>
-
-              {/* primary: login */}
-              <button
-                onClick={onLogin}
-                className="w-full h-11 rounded-xl text-sm font-medium bg-foreground text-surface transition-opacity hover:opacity-90 active:opacity-80 outline-none"
-              >
-                {i18nService.t('welcomeLogin')}
-              </button>
-
-              {/* secondary: custom model — quiet ghost style */}
-              <button
-                onClick={onCustomModel}
-                className="mt-3 w-full h-11 rounded-xl text-sm font-medium text-secondary border border-border bg-transparent hover:text-foreground hover:bg-surface-raised transition-colors outline-none"
-              >
-                {i18nService.t('welcomeCustomModel')}
-              </button>
-            </>
-          )}
+          {/* primary: configure model */}
+          <button
+            onClick={onCustomModel}
+            className="w-full h-11 rounded-xl text-sm font-medium bg-foreground text-surface transition-opacity hover:opacity-90 active:opacity-80 outline-none"
+          >
+            {i18nService.t('welcomeCustomModel')}
+          </button>
         </div>
       </div>
 

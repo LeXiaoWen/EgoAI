@@ -1,5 +1,5 @@
 import { ArrowPathIcon, ChevronDownIcon, ChevronUpIcon, ExclamationTriangleIcon, RocketLaunchIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { type AppUpdateRuntimeState, AppUpdateStatus } from '../../../shared/appUpdate/constants';
 import { i18nService } from '../../services/i18n';
@@ -15,9 +15,6 @@ interface AppUpdateCardProps {
   onUpdate: () => Promise<void> | void;
   onShowDetails: () => void;
   onCancelDownload: () => Promise<void> | void;
-  /** Reports whether the full card (not the collapsed pill) is showing, so the
-   * sidebar can yield the bottom promo slot to it. */
-  onExpandedChange?: (expanded: boolean) => void;
 }
 
 const Spinner: React.FC<{ className?: string }> = ({ className = 'h-3.5 w-3.5' }) => (
@@ -55,7 +52,6 @@ const AppUpdateCard: React.FC<AppUpdateCardProps> = ({
   onUpdate,
   onShowDetails,
   onCancelDownload,
-  onExpandedChange,
 }) => {
   // undefined = persisted collapse state still loading; render nothing to
   // avoid an expand/collapse flash on startup.
@@ -81,13 +77,6 @@ const AppUpdateCard: React.FC<AppUpdateCardProps> = ({
   const isExpanded = collapsedVersion !== undefined
     && updateInfo != null
     && shouldExpandUpdateCard(collapsedVersion, updateInfo.latestVersion);
-
-  // The sidebar banner shares this bottom slot. Sync before paint so expanding
-  // the card never renders a frame with both elements competing for space.
-  useLayoutEffect(() => {
-    onExpandedChange?.(isExpanded);
-    return () => onExpandedChange?.(false);
-  }, [isExpanded, onExpandedChange]);
 
   if (!updateInfo || collapsedVersion === undefined) return null;
 
