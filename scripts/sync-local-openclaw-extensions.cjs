@@ -15,7 +15,7 @@ function syncLocalOpenClawExtensions(runtimeRoot) {
     return { sourceDir, targetRoot, copied: [] };
   }
   if (!fs.existsSync(targetExtensionsDir)) {
-    throw new Error(`Runtime extensions directory does not exist: ${targetExtensionsDir}`);
+    fs.mkdirSync(targetExtensionsDir, { recursive: true });
   }
 
   const copied = [];
