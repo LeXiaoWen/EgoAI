@@ -496,7 +496,7 @@ bump as a conventional commit and create a matching tag:
 
 ```bash
 npm version 2026.9.2 --no-git-tag-version
-git commit -am "chore: bump version to 2026.9.2"
+git commit -am "chore: 版本号更新至 2026.9.2"
 git tag v2026.9.2
 ```
 
@@ -512,12 +512,13 @@ unless the user explicitly asks for it.
 Do not create commits until the user has tested and confirmed, unless they
 explicitly asked you to commit.
 
-Commit messages must follow Conventional Commits and be written in English:
+Commit messages must follow Conventional Commits with the type prefix in
+English and the description written in Chinese:
 
 ```text
-feat(cowork): add streaming progress indicator
-fix(sqlite): prevent duplicate session insert on retry
-chore: bump version to 2026.6.18
+feat(cowork): 新增流式进度指示器
+fix(sqlite): 修复重试时重复插入会话的问题
+chore: 版本号更新至 2026.6.18
 ```
 
 Do not add `Co-Authored-By` trailers unless explicitly requested.
