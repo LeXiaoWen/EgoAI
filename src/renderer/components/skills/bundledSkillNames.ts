@@ -14,6 +14,7 @@ import type { LocalizedText } from '../../types/skill';
  */
 export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'article-writer': { zh: '长文写作', en: 'Article Writer' },
+  'bid-design-writer': { zh: '招标解析编写', en: 'Tender Parsing & Writing' },
   'canvas-design': { zh: '画布设计', en: 'Canvas Design' },
   'content-planner': { zh: '内容规划', en: 'Content Planner' },
   'create-plan': { zh: '计划生成', en: 'Create Plan' },

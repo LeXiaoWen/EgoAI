@@ -19,6 +19,7 @@
     "content-planner": { "order": 120, "enabled": true },
     "article-writer": { "order": 121, "enabled": true },
     "daily-trending": { "order": 122, "enabled": true },
+    "bid-design-writer": { "order": 150, "enabled": true },
     "local-tools": { "order": 200, "enabled": true },
     "weather": { "order": 210, "enabled": true },
     "skin-creator": { "order": 214, "enabled": false },
