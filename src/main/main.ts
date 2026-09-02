@@ -127,6 +127,7 @@ import {
 } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
+import { WeknoraIpcChannel } from '../shared/weknora/constants';
 import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
@@ -221,10 +222,6 @@ import {
   syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
 import {
-  buildManagedSessionKey,
-  DEFAULT_MANAGED_AGENT_ID,
-} from './libs/openclawManagedSessionKey';
-import {
   CONFIG_DELIVERY_FALLBACK_REASON_PREFIX,
   deliverOpenClawConfigToGateway,
   OpenClawConfigDeliveryMode,
@@ -246,6 +243,10 @@ import {
   getCoworkParentSessionId,
   resolveCoworkSessionIdByOpenClawSessionKey,
 } from './libs/openclawLocalSessionResolver';
+import {
+  buildManagedSessionKey,
+  DEFAULT_MANAGED_AGENT_ID,
+} from './libs/openclawManagedSessionKey';
 import {
   addMemoryEntry,
   deleteMemoryEntry,
@@ -277,6 +278,7 @@ import {
   restoreOriginalProxyEnv,
   setSystemProxyEnabled,
 } from './libs/systemProxy';
+import { getWeknoraManager } from './libs/weknoraManager';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
 import { OpenClawSessionIpc } from './openclawSession/constants';
@@ -3529,6 +3531,16 @@ if (!gotTheLock) {
     },
     getWorkbenchTitle: () => t('dshWorkbenchTitle'),
     syncOpenClawConfig,
+  });
+
+  // WeKnora knowledge base: lazily start the bundled server and hand the
+  // renderer its loopback URL for the embedded webview.
+  ipcMain.handle(WeknoraIpcChannel.GetWebUrl, async () => {
+    const manager = getWeknoraManager();
+    const existing = manager.getWebUrl();
+    if (existing) return { url: existing };
+    const state = await manager.start();
+    return { url: state.phase === 'ready' ? manager.getWebUrl() : null };
   });
 
 

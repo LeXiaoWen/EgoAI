@@ -55,6 +55,7 @@ import type {
   SkinGetActiveResponse,
   SkinListResponse,
 } from '../shared/skin/types';
+import { WeknoraIpcChannel } from '../shared/weknora/constants';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -244,6 +245,9 @@ contextBridge.exposeInMainWorld('electron', {
     setEnabled: (enabled: boolean) => ipcRenderer.invoke(DshIpcChannel.SetEnabled, enabled),
     openWorkbench: () => ipcRenderer.invoke(DshIpcChannel.OpenWorkbench),
     stop: () => ipcRenderer.invoke(DshIpcChannel.Stop),
+  },
+  weknora: {
+    getWebUrl: () => ipcRenderer.invoke(WeknoraIpcChannel.GetWebUrl),
   },
   openclaw: {
     engine: {

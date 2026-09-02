@@ -56,3 +56,6 @@ sandbox/
 openspec/
 .superpowers/
 .diagram/
+# WeKnora-lite 产物目录：二进制/前端/配置/迁移/docreader/mcp-server 均从 WeKnora
+# v0.7.2 源复制，属 vendor 产物，整体忽略，由后续"获取 weknora 产物"脚本重建
+resources/weknora/

@@ -584,6 +584,9 @@ interface IElectronAPI {
     openWorkbench: () => Promise<{ url: string }>;
     stop: () => Promise<{ phase: string; port: number | null; version: string | null; errorCode: string | null }>;
   };
+  weknora: {
+    getWebUrl: () => Promise<{ url: string | null }>;
+  };
   openclaw: {
     engine: {
       getStatus: () => Promise<{ success: boolean; status?: OpenClawEngineStatus; error?: string }>;

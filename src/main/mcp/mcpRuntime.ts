@@ -20,6 +20,7 @@ import { OpenClawConfigImpact } from '../libs/openclawConfigImpact';
 import type { ResolvedMcpServer } from '../libs/openclawConfigSync';
 import { resolveLocalDesktopCoworkSessionIdByOpenClawSessionKey } from '../libs/openclawLocalSessionResolver';
 import { resolveStdioCommand } from '../libs/resolveStdioCommand';
+import { getWeknoraManager } from '../libs/weknoraManager';
 import type { SqliteStore } from '../sqliteStore';
 import { createMcpLaunchSourceFingerprint, McpLaunchResolutionStatus } from './mcpLaunchResolution';
 import { McpLaunchResolverManager } from './mcpLaunchResolverManager';
@@ -347,9 +348,45 @@ export class McpRuntime {
       console.warn('[MCP] failed to resolve built-in dsh-code server (non-fatal):', err);
     }
 
+    try {
+      const weknoraServer = await resolveWeknoraMcpServer();
+      if (weknoraServer) {
+        resolved.push(weknoraServer);
+        builtInCount++;
+      }
+    } catch (err) {
+      console.warn('[MCP] failed to resolve built-in weknora server (non-fatal):', err);
+    }
+
     console.log(
       `[MCP] resolved ${resolved.length}/${enabledServers.length} enabled server(s) for OpenClaw in ${Date.now() - startedAt}ms; optimized=${optimizedCount}, raw=${rawCount}, skipped=${skippedCount}, builtIn=${builtInCount}`,
     );
     return resolved;
   }
+}
+
+// Registers the bundled WeKnora knowledge base as an invisible built-in MCP
+// server. It resolves only after weknora-lite is listening so the stdio entry
+// can point at the dynamically allocated port. The tenant API key is left out
+// here and filled in during first-run onboarding (see weknora onboarding).
+async function resolveWeknoraMcpServer(): Promise<ResolvedMcpServer | null> {
+  const manager = getWeknoraManager();
+  if (!manager.getWebUrl()) {
+    const state = await manager.start();
+    if (state.phase !== 'ready' || !state.port) {
+      console.warn('[MCP] weknora server not ready; skipping built-in weknora server');
+      return null;
+    }
+  }
+  const port = manager.getPort();
+  if (!port) return null;
+  return {
+    name: 'weknora',
+    transportType: 'stdio',
+    command: process.platform === 'win32' ? 'python' : 'python3',
+    args: [manager.getMcpServerEntryPath()],
+    env: {
+      WEKNORA_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
+    },
+  };
 }

@@ -1670,6 +1670,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // MCP 服务
     mcpServers: 'MCP',
+    // 知识库
+    knowledgeBaseSidebarTitle: '知识库',
+    knowledgeBaseLoading: '正在启动知识库…',
+    knowledgeBaseFailed: '知识库启动失败',
     // 网站
     // 资料库
     librarySidebarTitle: '我的文件',
@@ -4737,6 +4741,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // MCP Servers
     mcpServers: 'MCP',
+    // Knowledge base
+    knowledgeBaseSidebarTitle: 'Knowledge Base',
+    knowledgeBaseLoading: 'Starting knowledge base…',
+    knowledgeBaseFailed: 'Knowledge base failed to start',
     // Sites
     // Library
     librarySidebarTitle: 'Library',
