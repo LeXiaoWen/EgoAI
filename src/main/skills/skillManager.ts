@@ -2541,10 +2541,11 @@ export class SkillManager {
       return path.resolve(app.getAppPath(), SKILLS_DIR_NAME);
     }
 
-    // In development, use the project root (parent of dist-electron).
-    // __dirname is dist-electron/, so we need to go up one level to get to project root
-    const projectRoot = path.resolve(__dirname, '..');
-    return path.resolve(projectRoot, SKILLS_DIR_NAME);
+    // In development, use the project root (where package.json lives).
+    // app.getAppPath() resolves there in dev, which is robust regardless of
+    // where the compiled entry sits — __dirname is dist-electron/main/skills,
+    // not dist-electron, so a fixed "go up one level" guess is wrong.
+    return path.resolve(app.getAppPath(), SKILLS_DIR_NAME);
   }
 
   getSkillConfig(skillId: string): { success: boolean; config?: Record<string, string>; error?: string } {
