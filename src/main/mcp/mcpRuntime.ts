@@ -367,8 +367,8 @@ export class McpRuntime {
 
 // Registers the bundled WeKnora knowledge base as an invisible built-in MCP
 // server. It resolves only after weknora-lite is listening so the stdio entry
-// can point at the dynamically allocated port. The tenant API key is left out
-// here and filled in during first-run onboarding (see weknora onboarding).
+// can point at the dynamically allocated port. The tenant API key is resolved
+// from the manager, which mints/persists it during start().
 async function resolveWeknoraMcpServer(): Promise<ResolvedMcpServer | null> {
   const manager = getWeknoraManager();
   if (!manager.getWebUrl()) {
@@ -387,6 +387,7 @@ async function resolveWeknoraMcpServer(): Promise<ResolvedMcpServer | null> {
     args: [manager.getMcpServerEntryPath()],
     env: {
       WEKNORA_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
+      WEKNORA_API_KEY: manager.getWeknoraApiKey() ?? '',
     },
   };
 }

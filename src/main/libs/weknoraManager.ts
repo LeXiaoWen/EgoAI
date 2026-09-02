@@ -35,6 +35,10 @@ interface WeknoraSecrets {
   // it straight from the env and silently disables encryption when len != 32.
   systemAesKey: string;
   jwtSecret: string;
+  // Plaintext tenant API key for the bundled MCP server. Minted once via
+  // auto-setup + POST /tenants/:id/api-keys, then persisted so MCP auth
+  // survives restarts. Optional because pre-bootstrap secrets files lack it.
+  weknoraApiKey?: string;
 }
 
 export class WeknoraManager {
@@ -44,6 +48,8 @@ export class WeknoraManager {
   private readonly logRing: string[] = [];
   private quitHookInstalled = false;
   private startPromise: Promise<WeknoraState> | null = null;
+  private secrets: WeknoraSecrets | null = null;
+  private mcpApiKey: string | null = null;
 
   getState(): WeknoraState {
     return { ...this.state };
@@ -55,6 +61,12 @@ export class WeknoraManager {
 
   getPort(): number | null {
     return this.state.port;
+  }
+
+  // Tenant API key for the bundled MCP server. Null until the server is ready
+  // and ensureMCPApiKey() has minted or revalidated it.
+  getWeknoraApiKey(): string | null {
+    return this.mcpApiKey;
   }
 
   getRecentLogs(): string[] {
@@ -165,6 +177,13 @@ export class WeknoraManager {
 
     console.log(`[WeKnora] Ready at http://127.0.0.1:${port}`);
     this.setState({ phase: 'ready', port, error: null });
+    try {
+      await this.ensureMCPApiKey(port);
+    } catch (error) {
+      // Non-fatal: the web UI still works without it, and MCP retrieval can
+      // retry on the next start. Do not flip the phase back to failed.
+      console.error('[WeKnora] Failed to ensure MCP API key', error);
+    }
     return this.getState();
   }
 
@@ -181,7 +200,15 @@ export class WeknoraManager {
           typeof parsed.jwtSecret === 'string' &&
           parsed.jwtSecret.length > 0
         ) {
-          return { systemAesKey: parsed.systemAesKey, jwtSecret: parsed.jwtSecret };
+          const secrets: WeknoraSecrets = {
+            systemAesKey: parsed.systemAesKey,
+            jwtSecret: parsed.jwtSecret,
+            ...(typeof parsed.weknoraApiKey === 'string' && parsed.weknoraApiKey.length > 0
+              ? { weknoraApiKey: parsed.weknoraApiKey }
+              : {}),
+          };
+          this.secrets = secrets;
+          return secrets;
         }
       }
     } catch (error) {
@@ -193,13 +220,88 @@ export class WeknoraManager {
       systemAesKey: crypto.randomBytes(24).toString('base64url'),
       jwtSecret: crypto.randomBytes(32).toString('hex'),
     };
+    this.secrets = secrets;
+    this.persistSecrets(secrets);
+    return secrets;
+  }
+
+  private persistSecrets(secrets: WeknoraSecrets): void {
     try {
       fs.mkdirSync(this.getDataDir(), { recursive: true });
-      fs.writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+      fs.writeFileSync(this.getSecretsPath(), JSON.stringify(secrets, null, 2), { mode: 0o600 });
     } catch (error) {
       console.warn('[WeKnora] Could not persist secrets', error);
     }
-    return secrets;
+  }
+
+  // Ensures a valid tenant API key exists for the bundled MCP server. The lite
+  // auto-setup transparently creates the default admin user + tenant and
+  // returns a JWT, but that response carries no API key — the MCP server only
+  // authenticates with X-API-Key, so we mint one via the tenant API and persist
+  // it in secrets.json. A stored key is probe-checked first so a deleted key or
+  // a wiped weknora.db (which silently re-creates the tenant) self-heals.
+  private async ensureMCPApiKey(port: number): Promise<void> {
+    const stored = this.secrets?.weknoraApiKey;
+    if (stored) {
+      if (await this.probeApiKey(port, stored)) {
+        this.mcpApiKey = stored;
+        return;
+      }
+      console.warn('[WeKnora] Stored MCP API key rejected by server; recreating');
+    }
+    const { token, tenantId } = await this.autoSetup(port);
+    const apiKey = await this.createTenantApiKey(port, token, tenantId);
+    this.mcpApiKey = apiKey;
+    this.secrets = { ...(this.secrets ?? this.loadOrCreateSecrets()), weknoraApiKey: apiKey };
+    this.persistSecrets(this.secrets);
+    console.log('[WeKnora] MCP API key ensured');
+  }
+
+  private async autoSetup(port: number): Promise<{ token: string; tenantId: number }> {
+    const res = await httpRequestJson({
+      port,
+      method: 'POST',
+      path: '/api/v1/auth/auto-setup',
+      body: {},
+    });
+    const data = res.data as {
+      token?: string;
+      memberships?: Array<{ tenant_id?: number }>;
+    };
+    const token = data?.token;
+    const tenantId = data?.memberships?.[0]?.tenant_id;
+    if (!token || !tenantId) {
+      throw new Error(`[WeKnora] auto-setup returned unexpected payload (status=${res.status})`);
+    }
+    return { token, tenantId };
+  }
+
+  private async createTenantApiKey(port: number, jwt: string, tenantId: number): Promise<string> {
+    const res = await httpRequestJson({
+      port,
+      method: 'POST',
+      path: `/api/v1/tenants/${tenantId}/api-keys`,
+      headers: { Authorization: `Bearer ${jwt}` },
+      body: { name: 'egoai-mcp', full_access: true },
+    });
+    // The response wraps the key under { success, data: { ..., token } }.
+    const payload = res.data as { data?: { token?: string } };
+    const token = payload?.data?.token;
+    if (!token) {
+      throw new Error(`[WeKnora] create api-key returned no token (status=${res.status})`);
+    }
+    return token;
+  }
+
+  private async probeApiKey(port: number, apiKey: string): Promise<boolean> {
+    const res = await httpRequestJson({
+      port,
+      method: 'GET',
+      path: '/api/v1/knowledge-bases',
+      headers: { 'X-API-Key': apiKey },
+    });
+    // 401 means the key is missing/revoked; anything else means it was accepted.
+    return res.status !== 401;
   }
 
   private wireChildStreams(child: ChildProcess, generation: number): void {
@@ -360,6 +462,60 @@ function probeHttpStatus(port: number): Promise<number> {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface HttpJsonResult {
+  status: number;
+  data: unknown;
+}
+
+// Minimal JSON request helper against the local WeKnora server. Kept in-house
+// to avoid pulling an HTTP client dependency into main-process glue code.
+function httpRequestJson(opts: {
+  port: number;
+  method: 'GET' | 'POST';
+  path: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+}): Promise<HttpJsonResult> {
+  return new Promise((resolve, reject) => {
+    const bodyText = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
+    const request = http.request(
+      {
+        host: '127.0.0.1',
+        port: opts.port,
+        path: opts.path,
+        method: opts.method,
+        headers: {
+          ...(bodyText !== undefined
+            ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyText) }
+            : {}),
+          ...opts.headers,
+        },
+        timeout: 10_000,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let data: unknown;
+          if (text) {
+            try {
+              data = JSON.parse(text);
+            } catch {
+              data = text;
+            }
+          }
+          resolve({ status: response.statusCode ?? 0, data });
+        });
+      },
+    );
+    request.on('timeout', () => request.destroy(new Error('timeout')));
+    request.on('error', (error) => reject(error));
+    if (bodyText !== undefined) request.write(bodyText);
+    request.end();
+  });
 }
 
 let weknoraManagerInstance: WeknoraManager | null = null;
