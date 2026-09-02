@@ -50,6 +50,7 @@ export class WeknoraManager {
   private startPromise: Promise<WeknoraState> | null = null;
   private secrets: WeknoraSecrets | null = null;
   private mcpApiKey: string | null = null;
+  private readyListener: (() => void) | null = null;
 
   getState(): WeknoraState {
     return { ...this.state };
@@ -67,6 +68,13 @@ export class WeknoraManager {
   // and ensureMCPApiKey() has minted or revalidated it.
   getWeknoraApiKey(): string | null {
     return this.mcpApiKey;
+  }
+
+  // Registers a listener fired once the server is ready and its MCP API key is
+  // ensured. Used to piggy-back model injection on readiness without pulling a
+  // weknoraModelSync dependency into this lifecycle module (avoids a cycle).
+  setReadyListener(listener: (() => void) | null): void {
+    this.readyListener = listener;
   }
 
   getRecentLogs(): string[] {
@@ -179,6 +187,12 @@ export class WeknoraManager {
     this.setState({ phase: 'ready', port, error: null });
     try {
       await this.ensureMCPApiKey(port);
+      try {
+        this.readyListener?.();
+      } catch (error) {
+        // A misbehaving listener must not flip the phase back to failed.
+        console.error('[WeKnora] Ready listener failed', error);
+      }
     } catch (error) {
       // Non-fatal: the web UI still works without it, and MCP retrieval can
       // retry on the next start. Do not flip the phase back to failed.
@@ -258,7 +272,7 @@ export class WeknoraManager {
   }
 
   private async autoSetup(port: number): Promise<{ token: string; tenantId: number }> {
-    const res = await httpRequestJson({
+    const res = await weknoraHttpRequest({
       port,
       method: 'POST',
       path: '/api/v1/auth/auto-setup',
@@ -277,7 +291,7 @@ export class WeknoraManager {
   }
 
   private async createTenantApiKey(port: number, jwt: string, tenantId: number): Promise<string> {
-    const res = await httpRequestJson({
+    const res = await weknoraHttpRequest({
       port,
       method: 'POST',
       path: `/api/v1/tenants/${tenantId}/api-keys`,
@@ -294,7 +308,7 @@ export class WeknoraManager {
   }
 
   private async probeApiKey(port: number, apiKey: string): Promise<boolean> {
-    const res = await httpRequestJson({
+    const res = await weknoraHttpRequest({
       port,
       method: 'GET',
       path: '/api/v1/knowledge-bases',
@@ -407,6 +421,17 @@ function buildSpawnEnv(
   env.LOCAL_STORAGE_BASE_DIR = path.join(dataDir, 'data', 'files');
   env.SYSTEM_AES_KEY = secrets.systemAesKey;
   env.JWT_SECRET = secrets.jwtSecret;
+  // WeKnora 的 SSRF 校验默认拒绝 loopback 与私有网段，但 EgoAI 的模型配置
+  // 入口可能指向本地 Ollama（默认 embedding 场景）、本地 LM Studio 或内网
+  // 模型服务（如 http://192.168.x.x:8000/v1）。EgoAI 是单用户本地桌面应用，
+  // 模型端点由用户显式配置（可信输入），因此把回环地址与常见私有 IPv4 网段
+  // 并入额外白名单，使注入的模型 base_url 能通过校验（公网域名不受影响）。
+  env.SSRF_WHITELIST_EXTRA = [
+    env.SSRF_WHITELIST_EXTRA,
+    'localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16',
+  ]
+    .filter(Boolean)
+    .join(',');
   // TENANT_AES_KEY is a legacy placeholder WeKnora never reads; drop it so it
   // cannot be mistaken for the real encryption key (SYSTEM_AES_KEY).
   delete env.TENANT_AES_KEY;
@@ -471,9 +496,9 @@ interface HttpJsonResult {
 
 // Minimal JSON request helper against the local WeKnora server. Kept in-house
 // to avoid pulling an HTTP client dependency into main-process glue code.
-function httpRequestJson(opts: {
+export function weknoraHttpRequest(opts: {
   port: number;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
   headers?: Record<string, string>;
   body?: unknown;

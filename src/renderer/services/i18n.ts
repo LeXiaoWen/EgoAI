@@ -2968,6 +2968,21 @@ const translations: Record<LanguageType, Record<string, string>> = {
     emailEnabledLabel: '启用此账号',
     emailSaving: '保存中...',
     emailDeleting: '删除中...',
+
+    // 知识库模型（WeKnora 融合）
+    knowledgeBaseModelsTitle: '知识库模型',
+    knowledgeBaseModelsTitleHint: 'EgoAI 统一管理 WeKnora 的模型配置，chat 复用当前对话模型。',
+    knowledgeBaseEmbeddingTitle: 'Embedding 模型',
+    knowledgeBaseEmbeddingHint: '用于知识库向量化，本地默认 Ollama bge-m3。',
+    knowledgeBaseSource: '来源',
+    knowledgeBaseSourceLocal: '本地 (Ollama)',
+    knowledgeBaseSourceRemote: '远程 (OpenAI 兼容)',
+    knowledgeBaseModel: '模型',
+    knowledgeBaseBaseUrl: 'Base URL',
+    knowledgeBaseApiKey: 'API Key',
+    knowledgeBaseRerankTitle: 'Rerank 模型',
+    knowledgeBaseRerankEnabled: '启用 Rerank',
+    knowledgeBaseRerankEnabledHint: 'Ollama 不支持 rerank，启用后需配置在线 API。',
   },
   en: {
     // Common
@@ -6129,6 +6144,21 @@ const translations: Record<LanguageType, Record<string, string>> = {
     emailEnabledLabel: 'Enable this account',
     emailSaving: 'Saving...',
     emailDeleting: 'Deleting...',
+
+    // Knowledge base models (WeKnora fusion)
+    knowledgeBaseModelsTitle: 'Knowledge Base Models',
+    knowledgeBaseModelsTitleHint: 'EgoAI manages WeKnora model config; chat reuses the active chat model.',
+    knowledgeBaseEmbeddingTitle: 'Embedding Model',
+    knowledgeBaseEmbeddingHint: 'For knowledge base vectorization. Defaults to local Ollama bge-m3.',
+    knowledgeBaseSource: 'Source',
+    knowledgeBaseSourceLocal: 'Local (Ollama)',
+    knowledgeBaseSourceRemote: 'Remote (OpenAI-compatible)',
+    knowledgeBaseModel: 'Model',
+    knowledgeBaseBaseUrl: 'Base URL',
+    knowledgeBaseApiKey: 'API Key',
+    knowledgeBaseRerankTitle: 'Rerank Model',
+    knowledgeBaseRerankEnabled: 'Enable Rerank',
+    knowledgeBaseRerankEnabledHint: 'Ollama does not support rerank; enabling requires an online API.',
   },
 };
 

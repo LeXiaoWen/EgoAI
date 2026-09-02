@@ -8,6 +8,10 @@ import {
   defaultNotificationSettings,
   type NotificationSettings,
 } from '../shared/notifications/constants';
+import {
+  defaultKnowledgeBaseModels,
+  type KnowledgeBaseModelsConfig,
+} from '../shared/weknora/knowledgeBaseModels';
 
 export const ShortcutAction = {
   NewChat: 'newChat',
@@ -112,6 +116,8 @@ export interface AppConfig {
   };
   providers?: Record<string, ProviderConfig>;
   providerModelMigrationVersions?: Record<string, number>;
+  // 知识库模型配置（embedding/rerank 独立；chat 复用 providers/model）
+  knowledgeBaseModels?: KnowledgeBaseModelsConfig;
   // 主题配置
   theme: 'light' | 'dark' | 'system';
   // Optional for configs created before exact default theme persistence was introduced.
@@ -182,6 +188,7 @@ export const defaultConfig: AppConfig = {
     defaultModelProvider: 'deepseek',
   },
   providers: buildDefaultProviders(),
+  knowledgeBaseModels: defaultKnowledgeBaseModels,
   theme: 'system',
   uiFontSize: FontPreferences.UiFontSizeDefault,
   uiFontSizeMigrationVersion: UI_FONT_SIZE_MIGRATION_VERSION,

@@ -128,6 +128,7 @@ import {
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
 import { WeknoraIpcChannel } from '../shared/weknora/constants';
+import type { KnowledgeBaseModelsConfig } from '../shared/weknora/knowledgeBaseModels';
 import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
@@ -279,6 +280,7 @@ import {
   setSystemProxyEnabled,
 } from './libs/systemProxy';
 import { getWeknoraManager } from './libs/weknoraManager';
+import { syncWeknoraModels } from './libs/weknoraModelSync';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
 import { OpenClawSessionIpc } from './openclawSession/constants';
@@ -2510,6 +2512,7 @@ type AppConfigSettings = {
   usageAnalyticsEnabled?: boolean;
   notificationSettings?: Partial<NotificationSettings>;
   browserWebAccess?: Partial<BrowserWebAccessConfig>;
+  knowledgeBaseModels?: KnowledgeBaseModelsConfig;
 };
 
 const getUseSystemProxyFromConfig = (config?: { useSystemProxy?: boolean }): boolean => {
@@ -2824,6 +2827,23 @@ if (!gotTheLock) {
       const actionDecision = removeImpactDecisionReasons(impactDecision, [
         OpenClawConfigImpactReason.AppUseSystemProxy,
       ]);
+
+      // 模型统一：chat 复用 model/providers，embedding/rerank 走 knowledgeBaseModels。
+      // 任一变化都触发 WeKnora models 表幂等注入（失败非致命，可重入）。
+      const knowledgeBaseModelsChanged = JSON.stringify(previousAppConfig?.knowledgeBaseModels) !==
+        JSON.stringify(nextAppConfig?.knowledgeBaseModels);
+      const chatModelChanged = impactDecision.reasons.some(
+        reason =>
+          reason === OpenClawConfigImpactReason.AppModelConfig ||
+          reason === OpenClawConfigImpactReason.AppProviderConfig ||
+          reason === OpenClawConfigImpactReason.AppProviderSecret,
+      );
+      if (knowledgeBaseModelsChanged || chatModelChanged) {
+        void syncWeknoraModels({
+          reason: 'app-config-change',
+          getKnowledgeBaseModels: () => nextAppConfig?.knowledgeBaseModels ?? null,
+        });
+      }
 
       if (proxyChanged && getOpenClawEngineManager().getStatus().phase === 'running') {
         console.log('[OpenClaw] Deferred app_config sync to the system proxy watcher.');
@@ -7052,6 +7072,15 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
+
+    // 模型统一：WeKnora 就绪后注入 chat/embedding/rerank 三类模型（幂等，失败非致命）。
+    getWeknoraManager().setReadyListener(() => {
+      void syncWeknoraModels({
+        reason: 'weknora-ready',
+        getKnowledgeBaseModels: () =>
+          getStore().get<AppConfigSettings>('app_config')?.knowledgeBaseModels ?? null,
+      });
+    });
 
     bindCoworkRuntimeForwarder();
     bindOpenClawStatusForwarder();

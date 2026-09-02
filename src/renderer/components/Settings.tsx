@@ -24,6 +24,10 @@ import {
   resolveCodingPlanBaseUrl,
   resolveModelRuntimeProfile,
 } from '../../shared/providers';
+import {
+  defaultKnowledgeBaseModels,
+  type KnowledgeBaseModelsConfig,
+} from '../../shared/weknora/knowledgeBaseModels';
 import { type AppConfig, defaultConfig, FontPreferences, getProviderDisplayName, getVisibleProviders, isCustomProvider, normalizeFontPreference, resolveArtifactAutoPreviewEnabled, ShortcutAction, type ShortcutConfig } from '../config';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { useSkin } from '../providers/SkinProvider';
@@ -63,6 +67,7 @@ import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
 import PluginsSettings, { type PluginsSettingsHandle } from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
+import KnowledgeBaseModelsSection from './settings/KnowledgeBaseModelsSection';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
   buildOpenAIConnectionTestRequestBody,
@@ -796,6 +801,9 @@ const Settings: React.FC<SettingsProps> = ({
     ...defaultBrowserWebAccessConfig,
     webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
   }));
+  const [knowledgeBaseModels, setKnowledgeBaseModels] = useState<KnowledgeBaseModelsConfig>(
+    () => defaultKnowledgeBaseModels,
+  );
   const [isUpdatingAutoLaunch, setIsUpdatingAutoLaunch] = useState(false);
   const [preventSleep, setPreventSleepState] = useState(false);
   const [isUpdatingPreventSleep, setIsUpdatingPreventSleep] = useState(false);
@@ -1328,6 +1336,7 @@ const Settings: React.FC<SettingsProps> = ({
         setQuestionNotificationsEnabled(notificationSettings.questionNotificationsEnabled);
       }
       setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
+      setKnowledgeBaseModels(config.knowledgeBaseModels ?? defaultKnowledgeBaseModels);
       const savedTestMode = config.app?.testMode ?? false;
       setTestMode(savedTestMode);
       if (savedTestMode) setTestModeUnlocked(true);
@@ -2269,6 +2278,7 @@ const Settings: React.FC<SettingsProps> = ({
           questionNotificationsEnabled,
         }),
         browserWebAccess: normalizedBrowserWebAccess,
+        knowledgeBaseModels,
         shortcuts,
         app: {
           ...previousConfig.app,
@@ -4214,33 +4224,41 @@ const Settings: React.FC<SettingsProps> = ({
 
       case 'model':
         return (
-          <ModelSettingsSection
-            providers={providers}
-            activeProvider={activeProvider}
-            visibleProviders={visibleProviders}
-            showApiKey={showApiKey}
-            setShowApiKey={setShowApiKey}
-            isImportingProviders={isImportingProviders}
-            isExportingProviders={isExportingProviders}
-            isBaseUrlLocked={isBaseUrlLocked}
-            isTesting={isTesting}
-            testResult={testResult}
-            isTestResultModalOpen={isTestResultModalOpen}
-            setIsTestResultModalOpen={setIsTestResultModalOpen}
-            importInputRef={importInputRef}
-            handleImportProvidersClick={handleImportProvidersClick}
-            handleExportProviders={handleExportProviders}
-            handleImportProviders={handleImportProviders}
-            handleProviderChange={handleProviderChange}
-            toggleProviderEnabled={toggleProviderEnabled}
-            handleAddCustomProvider={handleAddCustomProvider}
-            handleDeleteCustomProvider={handleDeleteCustomProvider}
-            handleProviderConfigChange={handleProviderConfigChange}
-            handleTestConnection={handleTestConnection}
-            handleAddModel={handleAddModel}
-            handleEditModel={handleEditModel}
-            handleDeleteModel={handleDeleteModel}
-          />
+          <>
+            <ModelSettingsSection
+              providers={providers}
+              activeProvider={activeProvider}
+              visibleProviders={visibleProviders}
+              showApiKey={showApiKey}
+              setShowApiKey={setShowApiKey}
+              isImportingProviders={isImportingProviders}
+              isExportingProviders={isExportingProviders}
+              isBaseUrlLocked={isBaseUrlLocked}
+              isTesting={isTesting}
+              testResult={testResult}
+              isTestResultModalOpen={isTestResultModalOpen}
+              setIsTestResultModalOpen={setIsTestResultModalOpen}
+              importInputRef={importInputRef}
+              handleImportProvidersClick={handleImportProvidersClick}
+              handleExportProviders={handleExportProviders}
+              handleImportProviders={handleImportProviders}
+              handleProviderChange={handleProviderChange}
+              toggleProviderEnabled={toggleProviderEnabled}
+              handleAddCustomProvider={handleAddCustomProvider}
+              handleDeleteCustomProvider={handleDeleteCustomProvider}
+              handleProviderConfigChange={handleProviderConfigChange}
+              handleTestConnection={handleTestConnection}
+              handleAddModel={handleAddModel}
+              handleEditModel={handleEditModel}
+              handleDeleteModel={handleDeleteModel}
+            />
+            <div className="mt-4">
+              <KnowledgeBaseModelsSection
+                value={knowledgeBaseModels}
+                onChange={setKnowledgeBaseModels}
+              />
+            </div>
+          </>
         );
 
       case 'shortcuts':
