@@ -9,9 +9,9 @@ import {
   type NotificationSettings,
 } from '../shared/notifications/constants';
 import {
-  defaultKnowledgeBaseModels,
-  type KnowledgeBaseModelsConfig,
-} from '../shared/weknora/knowledgeBaseModels';
+  defaultKnowledgeBaseConnection,
+  type KnowledgeBaseConnectionConfig,
+} from '../shared/weknora/connection';
 
 export const ShortcutAction = {
   NewChat: 'newChat',
@@ -116,8 +116,6 @@ export interface AppConfig {
   };
   providers?: Record<string, ProviderConfig>;
   providerModelMigrationVersions?: Record<string, number>;
-  // 知识库模型配置（embedding/rerank 独立；chat 复用 providers/model）
-  knowledgeBaseModels?: KnowledgeBaseModelsConfig;
   // 主题配置
   theme: 'light' | 'dark' | 'system';
   // Optional for configs created before exact default theme persistence was introduced.
@@ -144,6 +142,8 @@ export interface AppConfig {
   notificationSettings?: NotificationSettings;
   // 浏览器与网页访问配置
   browserWebAccess: BrowserWebAccessConfig;
+  // 知识库连接：用户自备 WeKnora 实例的 { baseUrl, apiKey }，喂给内置 weknora MCP。
+  knowledgeBaseConnection?: KnowledgeBaseConnectionConfig;
   // 语言初始化标记 (用于判断是否是首次启动)
   language_initialized?: boolean;
   // 应用配置
@@ -188,7 +188,6 @@ export const defaultConfig: AppConfig = {
     defaultModelProvider: 'deepseek',
   },
   providers: buildDefaultProviders(),
-  knowledgeBaseModels: defaultKnowledgeBaseModels,
   theme: 'system',
   uiFontSize: FontPreferences.UiFontSizeDefault,
   uiFontSizeMigrationVersion: UI_FONT_SIZE_MIGRATION_VERSION,
@@ -201,6 +200,7 @@ export const defaultConfig: AppConfig = {
   usageAnalyticsEnabled: true,
   notificationSettings: defaultNotificationSettings,
   browserWebAccess: defaultBrowserWebAccessConfig,
+  knowledgeBaseConnection: defaultKnowledgeBaseConnection,
   app: {
     port: 3000,
     isDevelopment: process.env.NODE_ENV === 'development',

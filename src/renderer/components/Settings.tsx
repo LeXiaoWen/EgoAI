@@ -25,9 +25,9 @@ import {
   resolveModelRuntimeProfile,
 } from '../../shared/providers';
 import {
-  defaultKnowledgeBaseModels,
-  type KnowledgeBaseModelsConfig,
-} from '../../shared/weknora/knowledgeBaseModels';
+  defaultKnowledgeBaseConnection,
+  type KnowledgeBaseConnectionConfig,
+} from '../../shared/weknora/connection';
 import { type AppConfig, defaultConfig, FontPreferences, getProviderDisplayName, getVisibleProviders, isCustomProvider, normalizeFontPreference, resolveArtifactAutoPreviewEnabled, ShortcutAction, type ShortcutConfig } from '../config';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { useSkin } from '../providers/SkinProvider';
@@ -67,7 +67,7 @@ import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
 import PluginsSettings, { type PluginsSettingsHandle } from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
-import KnowledgeBaseModelsSection from './settings/KnowledgeBaseModelsSection';
+import KnowledgeBaseConnectionSection from './settings/KnowledgeBaseConnectionSection';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
   buildOpenAIConnectionTestRequestBody,
@@ -801,9 +801,9 @@ const Settings: React.FC<SettingsProps> = ({
     ...defaultBrowserWebAccessConfig,
     webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
   }));
-  const [knowledgeBaseModels, setKnowledgeBaseModels] = useState<KnowledgeBaseModelsConfig>(
-    () => defaultKnowledgeBaseModels,
-  );
+  const [knowledgeBaseConnection, setKnowledgeBaseConnection] = useState<KnowledgeBaseConnectionConfig>(() => ({
+    ...defaultKnowledgeBaseConnection,
+  }));
   const [isUpdatingAutoLaunch, setIsUpdatingAutoLaunch] = useState(false);
   const [preventSleep, setPreventSleepState] = useState(false);
   const [isUpdatingPreventSleep, setIsUpdatingPreventSleep] = useState(false);
@@ -1336,7 +1336,11 @@ const Settings: React.FC<SettingsProps> = ({
         setQuestionNotificationsEnabled(notificationSettings.questionNotificationsEnabled);
       }
       setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
-      setKnowledgeBaseModels(config.knowledgeBaseModels ?? defaultKnowledgeBaseModels);
+      setKnowledgeBaseConnection(
+        config.knowledgeBaseConnection
+          ? { ...config.knowledgeBaseConnection }
+          : { ...defaultKnowledgeBaseConnection },
+      );
       const savedTestMode = config.app?.testMode ?? false;
       setTestMode(savedTestMode);
       if (savedTestMode) setTestModeUnlocked(true);
@@ -2278,7 +2282,7 @@ const Settings: React.FC<SettingsProps> = ({
           questionNotificationsEnabled,
         }),
         browserWebAccess: normalizedBrowserWebAccess,
-        knowledgeBaseModels,
+        knowledgeBaseConnection,
         shortcuts,
         app: {
           ...previousConfig.app,
@@ -4253,9 +4257,9 @@ const Settings: React.FC<SettingsProps> = ({
               handleDeleteModel={handleDeleteModel}
             />
             <div className="mt-4">
-              <KnowledgeBaseModelsSection
-                value={knowledgeBaseModels}
-                onChange={setKnowledgeBaseModels}
+              <KnowledgeBaseConnectionSection
+                value={knowledgeBaseConnection}
+                onChange={setKnowledgeBaseConnection}
               />
             </div>
           </>

@@ -75,15 +75,9 @@ import type {
   SkinListResponse,
 } from '../../shared/skin/types';
 import type {
-  CreateKnowledgeBaseInput,
-  HybridSearchInput,
-  Knowledge,
-  KnowledgeBase,
-  KnowledgeList,
-  SearchResult,
-  UploadDocumentInput,
-  WeknoraResult,
-} from '../../shared/weknora/types';
+  KnowledgeBaseConnectionConfig,
+  WeknoraTestConnectionResult,
+} from '../../shared/weknora/connection';
 import type { CoworkTempDirPreview } from './cowork';
 interface ApiResponse {
   ok: boolean;
@@ -594,21 +588,9 @@ interface IElectronAPI {
     openWorkbench: () => Promise<{ url: string }>;
     stop: () => Promise<{ phase: string; port: number | null; version: string | null; errorCode: string | null }>;
   };
-  weknora: {
-    getWebUrl: () => Promise<{ url: string | null }>;
-    kbList: () => Promise<WeknoraResult<KnowledgeBase[]>>;
-    kbCreate: (input: CreateKnowledgeBaseInput) => Promise<WeknoraResult<KnowledgeBase>>;
-    kbDelete: (kbId: string) => Promise<WeknoraResult<null>>;
-    docList: (input: {
-      kbId: string;
-      page?: number;
-      pageSize?: number;
-    }) => Promise<WeknoraResult<KnowledgeList>>;
-    docGet: (docId: string) => Promise<WeknoraResult<Knowledge>>;
-    docDelete: (docId: string) => Promise<WeknoraResult<null>>;
-    docUpload: (input: UploadDocumentInput) => Promise<WeknoraResult<Knowledge>>;
-    searchHybrid: (input: HybridSearchInput) => Promise<WeknoraResult<SearchResult[]>>;
-    openFile: () => Promise<{ path: string | null }>;
+  knowledgeBase: {
+    testConnection: (connection: KnowledgeBaseConnectionConfig) =>
+      Promise<WeknoraTestConnectionResult>;
   };
   openclaw: {
     engine: {
