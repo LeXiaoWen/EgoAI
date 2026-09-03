@@ -29,7 +29,6 @@ import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineFailureOverlay from './components/cowork/EngineFailureOverlay';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
 import KitsView from './components/kits/KitsView';
-import KnowledgeBaseView from './components/knowledgeBase/KnowledgeBaseView';
 import LibraryView from './components/library/LibraryView';
 import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
@@ -154,7 +153,7 @@ const logAppUpdateRendererLifecycle = (
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'kits' | 'mcp' | 'library' | 'knowledge'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'kits' | 'mcp' | 'library'>('cowork');
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<ToastEventDetail | null>(null);
@@ -556,10 +555,6 @@ const App: React.FC = () => {
 
   const handleShowLibrary = useCallback(() => {
     setMainView('library');
-  }, []);
-
-  const handleShowKnowledge = useCallback(() => {
-    setMainView('knowledge');
   }, []);
 
   const handleOpenLibrarySession = useCallback((session: LibrarySessionRef) => {
@@ -1600,7 +1595,6 @@ const App: React.FC = () => {
           onShowCowork={handleShowCowork}
           onShowKits={handleShowKits}
           onShowLibrary={handleShowLibrary}
-          onShowKnowledge={handleShowKnowledge}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
@@ -1647,11 +1641,6 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onOpenSession={handleOpenLibrarySession}
                 updateBadge={collapsedHeaderUpdateBadge}
-              />
-            ) : mainView === 'knowledge' ? (
-              <KnowledgeBaseView
-                isSidebarCollapsed={isSidebarCollapsed}
-                onToggleSidebar={handleToggleSidebar}
               />
             ) : (
               <CoworkView

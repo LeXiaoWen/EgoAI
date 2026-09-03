@@ -1,4 +1,4 @@
-import { BookOpenIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -39,12 +39,11 @@ import TrashIcon from './icons/TrashIcon';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'kits' | 'mcp' | 'library' | 'knowledge';
+  activeView: 'cowork' | 'skills' | 'kits' | 'mcp' | 'library';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowKits: () => void;
   onShowLibrary: () => void;
-  onShowKnowledge: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -108,7 +107,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowCowork,
   onShowKits,
   onShowLibrary,
-  onShowKnowledge,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -510,18 +508,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <SidebarLibraryIcon className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">{i18nService.t('librarySidebarTitle')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowKnowledge();
-            }}
-            className={activeView === 'knowledge' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'knowledge' ? 'page' : undefined}
-          >
-            <BookOpenIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{i18nService.t('knowledgeBaseSidebarTitle')}</span>
           </button>
         </div>
       </div>
