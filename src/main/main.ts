@@ -127,8 +127,12 @@ import {
 } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
-import { WeknoraIpcChannel } from '../shared/weknora/constants';
-import type { KnowledgeBaseModelsConfig } from '../shared/weknora/knowledgeBaseModels';
+import {
+  knowledgeBaseApiBaseUrl,
+  type KnowledgeBaseConnectionConfig,
+  WeknoraTestConnectionChannel,
+  type WeknoraTestConnectionResult,
+} from '../shared/weknora/connection';
 import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
@@ -145,7 +149,6 @@ import { registerPermissionIpcHandlers } from './ipcHandlers/permissions/handler
 import { registerPluginHandlers } from './ipcHandlers/plugins';
 import { registerSessionDiagnosticsHandlers } from './ipcHandlers/sessionDiagnostics';
 import { registerSkillHandlers } from './ipcHandlers/skills';
-import { registerWeknoraHandlers } from './ipcHandlers/weknora';
 import { LibraryIndexService } from './library/libraryIndexService';
 import { registerLibraryIpcHandlers } from './library/libraryIpc';
 import { LibraryLocalStore } from './library/libraryLocalStore';
@@ -280,8 +283,6 @@ import {
   restoreOriginalProxyEnv,
   setSystemProxyEnabled,
 } from './libs/systemProxy';
-import { getWeknoraManager } from './libs/weknoraManager';
-import { syncWeknoraModels } from './libs/weknoraModelSync';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
 import { OpenClawSessionIpc } from './openclawSession/constants';
@@ -2513,7 +2514,7 @@ type AppConfigSettings = {
   usageAnalyticsEnabled?: boolean;
   notificationSettings?: Partial<NotificationSettings>;
   browserWebAccess?: Partial<BrowserWebAccessConfig>;
-  knowledgeBaseModels?: KnowledgeBaseModelsConfig;
+  knowledgeBaseConnection?: KnowledgeBaseConnectionConfig;
 };
 
 const getUseSystemProxyFromConfig = (config?: { useSystemProxy?: boolean }): boolean => {
@@ -2829,29 +2830,17 @@ if (!gotTheLock) {
         OpenClawConfigImpactReason.AppUseSystemProxy,
       ]);
 
-      // 模型统一：chat 复用 model/providers，embedding/rerank 走 knowledgeBaseModels。
-      // 任一变化都触发 WeKnora models 表幂等注入（失败非致命，可重入）。
-      const knowledgeBaseModelsChanged = JSON.stringify(previousAppConfig?.knowledgeBaseModels) !==
-        JSON.stringify(nextAppConfig?.knowledgeBaseModels);
-      const chatModelChanged = impactDecision.reasons.some(
-        reason =>
-          reason === OpenClawConfigImpactReason.AppModelConfig ||
-          reason === OpenClawConfigImpactReason.AppProviderConfig ||
-          reason === OpenClawConfigImpactReason.AppProviderSecret,
-      );
-      if (knowledgeBaseModelsChanged || chatModelChanged) {
-        void syncWeknoraModels({
-          reason: 'app-config-change',
-          getKnowledgeBaseModels: () => nextAppConfig?.knowledgeBaseModels ?? null,
-        });
-      }
+      // 知识库连接变更 → 触发内置 weknora MCP 重新解析（纳入 shouldSyncOpenClawConfig，
+      // gateway 重启后按新 baseUrl/apiKey 暴露或隐藏 weknora server）。
+      const knowledgeBaseConnectionChanged = JSON.stringify(previousAppConfig?.knowledgeBaseConnection) !==
+        JSON.stringify(nextAppConfig?.knowledgeBaseConnection);
 
       if (proxyChanged && getOpenClawEngineManager().getStatus().phase === 'running') {
         console.log('[OpenClaw] Deferred app_config sync to the system proxy watcher.');
         return;
       }
 
-      const shouldSyncOpenClawConfig = actionDecision.impact !== OpenClawConfigImpact.None || browserWebAccessChanged;
+      const shouldSyncOpenClawConfig = actionDecision.impact !== OpenClawConfigImpact.None || browserWebAccessChanged || knowledgeBaseConnectionChanged;
       let syncResult: Awaited<ReturnType<typeof syncOpenClawConfig>> | null = null;
       if (shouldSyncOpenClawConfig) {
         syncResult = await syncOpenClawConfig({
@@ -3553,20 +3542,6 @@ if (!gotTheLock) {
     getWorkbenchTitle: () => t('dshWorkbenchTitle'),
     syncOpenClawConfig,
   });
-
-  // WeKnora knowledge base: lazily start the bundled server and hand the
-  // renderer its loopback URL for the embedded webview.
-  ipcMain.handle(WeknoraIpcChannel.GetWebUrl, async () => {
-    const manager = getWeknoraManager();
-    const existing = manager.getWebUrl();
-    if (existing) return { url: existing };
-    const state = await manager.start();
-    return { url: state.phase === 'ready' ? manager.getWebUrl() : null };
-  });
-
-  // WeKnora REST proxy: fixed-path whitelist for knowledge-base/document/retrieval
-  // operations (renderer never talks to weknora-lite directly).
-  registerWeknoraHandlers({ getWeknoraManager });
 
   // Cowork IPC handlers
   ipcMain.handle(
@@ -5360,6 +5335,46 @@ if (!gotTheLock) {
     return { hasConfig: config !== null, config, error };
   });
 
+  // 知识库连接「测试连接」：只探一个固定端点（GET /api/v1/knowledge-bases），不做通用
+  // api:fetch；短超时防 UI 卡死。detail 是 IPC 载荷（开发者可见），UI 按 reason 本地化。
+  ipcMain.handle(
+    WeknoraTestConnectionChannel,
+    async (_event, raw: unknown): Promise<WeknoraTestConnectionResult> => {
+      const connection = (raw ?? {}) as Partial<KnowledgeBaseConnectionConfig>;
+      const baseUrl = typeof connection.baseUrl === 'string' ? connection.baseUrl.trim() : '';
+      const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey.trim() : '';
+      if (!baseUrl || !apiKey) {
+        return { ok: false, reason: 'invalid', detail: 'Missing baseUrl or apiKey' };
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(baseUrl);
+      } catch {
+        return { ok: false, reason: 'invalid', detail: 'Malformed baseUrl' };
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { ok: false, reason: 'invalid', detail: 'baseUrl must be http(s)' };
+      }
+      try {
+        const res = await fetch(`${knowledgeBaseApiBaseUrl(baseUrl)}/knowledge-bases`, {
+          headers: { 'X-API-Key': apiKey },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) return { ok: true };
+        if (res.status === 401 || res.status === 403) {
+          return { ok: false, reason: 'auth', detail: `HTTP ${res.status}` };
+        }
+        return { ok: false, reason: 'invalid', detail: `HTTP ${res.status}` };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'unreachable',
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+
   ipcMain.handle(
     'save-api-config',
     async (
@@ -7076,15 +7091,6 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
-
-    // 模型统一：WeKnora 就绪后注入 chat/embedding/rerank 三类模型（幂等，失败非致命）。
-    getWeknoraManager().setReadyListener(() => {
-      void syncWeknoraModels({
-        reason: 'weknora-ready',
-        getKnowledgeBaseModels: () =>
-          getStore().get<AppConfigSettings>('app_config')?.knowledgeBaseModels ?? null,
-      });
-    });
 
     bindCoworkRuntimeForwarder();
     bindOpenClawStatusForwarder();

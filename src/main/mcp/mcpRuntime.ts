@@ -4,6 +4,10 @@ import path from 'path';
 
 import { ASK_USER_QUESTION_TOOL_NAME, SESSION_AGNOSTIC_PERMISSION_SESSION_ID } from '../../shared/cowork/constants';
 import { McpIpcChannel } from '../../shared/mcp/constants';
+import {
+  knowledgeBaseApiBaseUrl,
+  type KnowledgeBaseConnectionConfig,
+} from '../../shared/weknora/connection';
 import { isComputerUseKitInstalled } from '../computerUse/computerUseKit';
 import { resolveComputerUseMcpServer } from '../computerUse/computerUseMcpServer';
 import { installComputerUseRuntime } from '../computerUse/computerUseRuntime';
@@ -20,7 +24,6 @@ import { OpenClawConfigImpact } from '../libs/openclawConfigImpact';
 import type { ResolvedMcpServer } from '../libs/openclawConfigSync';
 import { resolveLocalDesktopCoworkSessionIdByOpenClawSessionKey } from '../libs/openclawLocalSessionResolver';
 import { resolveStdioCommand } from '../libs/resolveStdioCommand';
-import { getWeknoraManager } from '../libs/weknoraManager';
 import type { SqliteStore } from '../sqliteStore';
 import { createMcpLaunchSourceFingerprint, McpLaunchResolutionStatus } from './mcpLaunchResolution';
 import { McpLaunchResolverManager } from './mcpLaunchResolverManager';
@@ -349,7 +352,7 @@ export class McpRuntime {
     }
 
     try {
-      const weknoraServer = await resolveWeknoraMcpServer();
+      const weknoraServer = await resolveWeknoraMcpServer(this.deps.getStore());
       if (weknoraServer) {
         resolved.push(weknoraServer);
         builtInCount++;
@@ -365,29 +368,37 @@ export class McpRuntime {
   }
 }
 
-// Registers the bundled WeKnora knowledge base as an invisible built-in MCP
-// server. It resolves only after weknora-lite is listening so the stdio entry
-// can point at the dynamically allocated port. The tenant API key is resolved
-// from the manager, which mints/persists it during start().
-async function resolveWeknoraMcpServer(): Promise<ResolvedMcpServer | null> {
-  const manager = getWeknoraManager();
-  if (!manager.getWebUrl()) {
-    const state = await manager.start();
-    if (state.phase !== 'ready' || !state.port) {
-      console.warn('[MCP] weknora server not ready; skipping built-in weknora server');
-      return null;
-    }
-  }
-  const port = manager.getPort();
-  if (!port) return null;
+// 纯客户端方向：内置 weknora MCP 指向用户自备 WeKnora 实例（resources/weknora
+// 下的 mcp-server stdio 入口 + 设置里保存的知识库连接）。未配置 baseUrl 时不暴露，
+// 因此不会写进 OpenClaw 的 mcp.servers（守卫风格同 computer-use / dsh-code）。
+
+// Dev 读 app.getAppPath() 下的 resources/weknora 树；打包后读 process.resourcesPath/weknora。
+function resolveWeknoraResourcesRoot(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'weknora')
+    : path.join(app.getAppPath(), 'resources', 'weknora');
+}
+
+function resolveWeknoraMcpEntryPath(): string {
+  return path.join(resolveWeknoraResourcesRoot(), 'mcp-server', 'run_server.py');
+}
+
+async function resolveWeknoraMcpServer(
+  store: SqliteStore,
+): Promise<ResolvedMcpServer | null> {
+  const connection = store.get<{ knowledgeBaseConnection?: KnowledgeBaseConnectionConfig | null }>(
+    'app_config',
+  )?.knowledgeBaseConnection;
+  const baseUrl = connection?.baseUrl?.trim();
+  if (!baseUrl) return null;
   return {
     name: 'weknora',
     transportType: 'stdio',
     command: process.platform === 'win32' ? 'python' : 'python3',
-    args: [manager.getMcpServerEntryPath()],
+    args: [resolveWeknoraMcpEntryPath()],
     env: {
-      WEKNORA_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
-      WEKNORA_API_KEY: manager.getWeknoraApiKey() ?? '',
+      WEKNORA_BASE_URL: knowledgeBaseApiBaseUrl(baseUrl),
+      WEKNORA_API_KEY: connection.apiKey ?? '',
     },
   };
 }
