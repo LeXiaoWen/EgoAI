@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { app, BrowserWindow } from 'electron';
+import { existsSync } from 'fs';
 import path from 'path';
 
 import { ASK_USER_QUESTION_TOOL_NAME, SESSION_AGNOSTIC_PERMISSION_SESSION_ID } from '../../shared/cowork/constants';
@@ -383,6 +384,21 @@ function resolveWeknoraMcpEntryPath(): string {
   return path.join(resolveWeknoraResourcesRoot(), 'mcp-server', 'run_server.py');
 }
 
+// mcp-server 由 Python 运行，run_server.py 依赖 mcp>=2。仓库内自带
+// resources/weknora/mcp-server/.venv（uv 管理）时优先用它，避免依赖系统
+// python 环境（可能装了不兼容的 mcp 版本）；无 .venv 时回退平台默认 python。
+function resolveWeknoraMcpCommand(): string {
+  const venvPython = path.join(
+    resolveWeknoraResourcesRoot(),
+    'mcp-server',
+    '.venv',
+    'bin',
+    process.platform === 'win32' ? 'python.exe' : 'python',
+  );
+  if (existsSync(venvPython)) return venvPython;
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
 async function resolveWeknoraMcpServer(
   store: SqliteStore,
 ): Promise<ResolvedMcpServer | null> {
@@ -394,7 +410,7 @@ async function resolveWeknoraMcpServer(
   return {
     name: 'weknora',
     transportType: 'stdio',
-    command: process.platform === 'win32' ? 'python' : 'python3',
+    command: resolveWeknoraMcpCommand(),
     args: [resolveWeknoraMcpEntryPath()],
     env: {
       WEKNORA_BASE_URL: knowledgeBaseApiBaseUrl(baseUrl),
