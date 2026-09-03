@@ -56,6 +56,11 @@ import type {
   SkinListResponse,
 } from '../shared/skin/types';
 import { WeknoraIpcChannel } from '../shared/weknora/constants';
+import type {
+  CreateKnowledgeBaseInput,
+  HybridSearchInput,
+  UploadDocumentInput,
+} from '../shared/weknora/types';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -248,6 +253,19 @@ contextBridge.exposeInMainWorld('electron', {
   },
   weknora: {
     getWebUrl: () => ipcRenderer.invoke(WeknoraIpcChannel.GetWebUrl),
+    kbList: () => ipcRenderer.invoke(WeknoraIpcChannel.KbList),
+    kbCreate: (input: CreateKnowledgeBaseInput) =>
+      ipcRenderer.invoke(WeknoraIpcChannel.KbCreate, input),
+    kbDelete: (kbId: string) => ipcRenderer.invoke(WeknoraIpcChannel.KbDelete, kbId),
+    docList: (input: { kbId: string; page?: number; pageSize?: number }) =>
+      ipcRenderer.invoke(WeknoraIpcChannel.DocList, input),
+    docGet: (docId: string) => ipcRenderer.invoke(WeknoraIpcChannel.DocGet, docId),
+    docDelete: (docId: string) => ipcRenderer.invoke(WeknoraIpcChannel.DocDelete, docId),
+    docUpload: (input: UploadDocumentInput) =>
+      ipcRenderer.invoke(WeknoraIpcChannel.DocUpload, input),
+    searchHybrid: (input: HybridSearchInput) =>
+      ipcRenderer.invoke(WeknoraIpcChannel.SearchHybrid, input),
+    openFile: () => ipcRenderer.invoke(WeknoraIpcChannel.OpenFile),
   },
   openclaw: {
     engine: {

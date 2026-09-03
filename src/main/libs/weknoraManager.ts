@@ -543,6 +543,59 @@ export function weknoraHttpRequest(opts: {
   });
 }
 
+// Multipart upload helper for the document endpoint. WeKnora's
+// CreateKnowledgeFromFile reads the file via c.FormFile("file") and expects
+// multipart/form-data; Node's built-in fetch + FormData generate the boundary
+// automatically, so the Content-Type must NOT be set by hand.
+export async function weknoraUploadFile(opts: {
+  port: number;
+  apiKey: string;
+  kbId: string;
+  fileBuffer: Buffer;
+  fileName: string;
+  fileType: string;
+  formFields?: Record<string, string>;
+}): Promise<HttpJsonResult> {
+  const form = new FormData();
+  // 拷贝为 ArrayBuffer 背书的 Uint8Array，规避 Node Buffer<ArrayBufferLike>
+  // 与 DOM BlobPart(ArrayBufferView<ArrayBuffer>) 的泛型不匹配。
+  const bytes = new Uint8Array(opts.fileBuffer);
+  form.append(
+    'file',
+    new Blob([bytes], { type: opts.fileType || 'application/octet-stream' }),
+    opts.fileName,
+  );
+  for (const [key, value] of Object.entries(opts.formFields ?? {})) {
+    form.append(key, value);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${opts.port}/api/v1/knowledge-bases/${encodeURIComponent(opts.kbId)}/knowledge/file`,
+      {
+        method: 'POST',
+        headers: { 'X-API-Key': opts.apiKey },
+        body: form,
+        signal: controller.signal,
+      },
+    );
+    const text = await response.text();
+    let data: unknown;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    return { status: response.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 let weknoraManagerInstance: WeknoraManager | null = null;
 
 export function getWeknoraManager(): WeknoraManager {

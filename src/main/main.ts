@@ -145,6 +145,7 @@ import { registerPermissionIpcHandlers } from './ipcHandlers/permissions/handler
 import { registerPluginHandlers } from './ipcHandlers/plugins';
 import { registerSessionDiagnosticsHandlers } from './ipcHandlers/sessionDiagnostics';
 import { registerSkillHandlers } from './ipcHandlers/skills';
+import { registerWeknoraHandlers } from './ipcHandlers/weknora';
 import { LibraryIndexService } from './library/libraryIndexService';
 import { registerLibraryIpcHandlers } from './library/libraryIpc';
 import { LibraryLocalStore } from './library/libraryLocalStore';
@@ -3563,6 +3564,9 @@ if (!gotTheLock) {
     return { url: state.phase === 'ready' ? manager.getWebUrl() : null };
   });
 
+  // WeKnora REST proxy: fixed-path whitelist for knowledge-base/document/retrieval
+  // operations (renderer never talks to weknora-lite directly).
+  registerWeknoraHandlers({ getWeknoraManager });
 
   // Cowork IPC handlers
   ipcMain.handle(
