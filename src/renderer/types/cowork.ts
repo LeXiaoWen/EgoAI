@@ -22,6 +22,7 @@ import type {
 } from '../../shared/openclawEngine/constants';
 import type { Platform } from '../../shared/platform';
 import type { ModelThinkingLevel } from '../../shared/providers/modelThinking';
+import type { KnowledgeBaseScope } from '../../shared/weknora/kbScope';
 
 // Cowork image attachment for vision-capable models
 export type CoworkImageAttachment = CoworkImageAttachmentPayload;
@@ -173,6 +174,8 @@ export interface CoworkSession {
   forkGitBranch?: string | null;
   forkGitBaseRef?: string | null;
   goal?: CoworkGoal | null;
+  /** 会话级知识库范围（某库 / 全部 / 不检索）。创建时按 agent 预设派生，恒为具体值。 */
+  kbScope?: KnowledgeBaseScope | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -370,6 +373,7 @@ export interface CoworkStartOptions {
   agentId?: string;
   modelOverride?: string;
   thinkingLevel?: ModelThinkingLevel;
+  kbScope?: KnowledgeBaseScope;
   imageAttachments?: CoworkImageAttachment[];
   mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
   selectedTextSnippets?: CoworkSelectedTextSnippet[];

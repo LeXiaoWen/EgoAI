@@ -10,6 +10,7 @@ import {
   OpenClawCronRunMetadataKey,
   parseOpenClawCronSessionKey,
 } from '../shared/cowork/openclawCronSessionKey';
+import { KNOWLEDGE_BASE_QA_PRESET_ID, presetDefaultKbScope } from '../shared/weknora/kbScope';
 import { DB_FILENAME } from './appConstants';
 import { initializeLibraryTables } from './library/libraryMigrations';
 import {
@@ -443,6 +444,11 @@ export class SqliteStore {
         this.didRunMigration = true;
       }
 
+      if (!colNames.includes('kb_scope_json')) {
+        this.db.exec('ALTER TABLE cowork_sessions ADD COLUMN kb_scope_json TEXT;');
+        this.didRunMigration = true;
+      }
+
       // Migration: Add sequence column to cowork_messages
       const msgColumns = this.db.pragma('table_info(cowork_messages)') as Array<{ name: string }>;
       const msgColNames = msgColumns.map(c => c.name);
@@ -532,6 +538,40 @@ export class SqliteStore {
       }
     } catch {
       // Column already exists or migration not needed.
+    }
+
+    // Migration: backfill kb_scope_json for sessions created before the column
+    // existed. Every session must carry a concrete scope from birth so the
+    // runtime injection never sees null; the default is keyed off the agent
+    // preset that seeded the session (knowledge-base-qa -> all, else none).
+    try {
+      const sessionCols = this.db.pragma('table_info(cowork_sessions)') as Array<{ name: string }>;
+      const hasKbScopeColumn = sessionCols.some(c => c.name === 'kb_scope_json');
+      if (hasKbScopeColumn) {
+        const legacyRows = this.db
+          .prepare(
+            `SELECT cs.id, cs.agent_id, a.preset_id
+             FROM cowork_sessions cs
+             LEFT JOIN agents a ON a.id = cs.agent_id
+             WHERE cs.kb_scope_json IS NULL`,
+          )
+          .all() as Array<{ id: string; agent_id: string | null; preset_id: string | null }>;
+        if (legacyRows.length > 0) {
+          const patchScope = this.db.prepare(
+            'UPDATE cowork_sessions SET kb_scope_json = ? WHERE id = ?',
+          );
+          for (const row of legacyRows) {
+            const presetId = row.preset_id ?? row.agent_id ?? null;
+            const scope = presetId === KNOWLEDGE_BASE_QA_PRESET_ID
+              ? presetDefaultKbScope(presetId)
+              : { mode: 'none' as const };
+            patchScope.run(JSON.stringify(scope), row.id);
+          }
+          this.didRunMigration = true;
+        }
+      }
+    } catch {
+      // Column or agents table may not exist yet on very old DBs.
     }
 
     try {

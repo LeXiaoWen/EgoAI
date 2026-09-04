@@ -31,3 +31,17 @@ export const WeknoraTestConnectionChannel = 'weknora:testConnection';
 export type WeknoraTestConnectionResult =
   | { ok: true }
   | { ok: false; reason: 'invalid' | 'auth' | 'unreachable'; detail?: string };
+
+/** 「查看可用知识库」走专用 IPC（端点固定，不做通用 api:fetch）。 */
+export const WeknoraListKnowledgeBasesChannel = 'weknora:listKnowledgeBases';
+
+/** 归一化后的知识库摘要（own + shared 去重）。 */
+export interface WeknoraKnowledgeBaseInfo {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export type WeknoraListKnowledgeBasesResult =
+  | { ok: true; knowledgeBases: WeknoraKnowledgeBaseInfo[] }
+  | { ok: false; reason: 'invalid' | 'auth' | 'unreachable'; detail?: string };

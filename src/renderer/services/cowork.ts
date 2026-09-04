@@ -25,6 +25,7 @@ import {
   type CoworkSteerRequest,
   CoworkSteerStatus,
 } from '../../shared/cowork/steer';
+import type { KnowledgeBaseScope } from '../../shared/weknora/kbScope';
 import { store } from '../store';
 import {
   addMessage,
@@ -2015,6 +2016,32 @@ class CoworkService {
     }
 
     console.error('Failed to patch session:', result.error);
+    return null;
+  }
+
+  async updateSessionKbScope(sessionId: string, scope: KnowledgeBaseScope): Promise<CoworkSession | null> {
+    const cowork = window.electron?.cowork;
+    if (!cowork?.updateSessionKbScope) {
+      console.error('updateSessionKbScope API not available');
+      return null;
+    }
+
+    let result: Awaited<ReturnType<NonNullable<typeof cowork.updateSessionKbScope>>>;
+    try {
+      result = await cowork.updateSessionKbScope({ sessionId, scope });
+    } catch (error) {
+      console.error('Failed to update session knowledge-base scope:', error);
+      return null;
+    }
+    if (result.success && result.session) {
+      const currentSessionId = store.getState().cowork.currentSessionId;
+      if (currentSessionId === sessionId) {
+        store.dispatch(setCurrentSession(result.session));
+      }
+      return result.session;
+    }
+
+    console.error('Failed to update session knowledge-base scope:', result.error);
     return null;
   }
 

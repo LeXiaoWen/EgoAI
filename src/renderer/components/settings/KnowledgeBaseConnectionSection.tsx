@@ -1,8 +1,12 @@
-import { CheckCircleIcon, ExclamationCircleIcon, SignalIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon, ListBulletIcon, SignalIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
 
-import type { KnowledgeBaseConnectionConfig } from '../../../shared/weknora/connection';
+import type {
+  KnowledgeBaseConnectionConfig,
+  WeknoraKnowledgeBaseInfo,
+} from '../../../shared/weknora/connection';
 import { i18nService } from '../../services/i18n';
+import { listKnowledgeBases } from '../../services/knowledgeBase';
 
 interface KnowledgeBaseConnectionSectionProps {
   value: KnowledgeBaseConnectionConfig;
@@ -13,6 +17,14 @@ type TestStatus =
   | { kind: 'idle' }
   | { kind: 'testing' }
   | { kind: 'ok' }
+  | { kind: 'auth' }
+  | { kind: 'unreachable' }
+  | { kind: 'invalid' };
+
+type ListStatus =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ready' }
   | { kind: 'auth' }
   | { kind: 'unreachable' }
   | { kind: 'invalid' };
@@ -29,13 +41,18 @@ const KnowledgeBaseConnectionSection: React.FC<KnowledgeBaseConnectionSectionPro
   onChange,
 }) => {
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: 'idle' });
+  const [listStatus, setListStatus] = useState<ListStatus>({ kind: 'idle' });
+  const [knowledgeBases, setKnowledgeBases] = useState<WeknoraKnowledgeBaseInfo[]>([]);
 
   const apiKeyMissing = value.apiKey.trim().length === 0;
   const baseUrlMissing = value.baseUrl.trim().length === 0;
   const isTesting = testStatus.kind === 'testing';
+  const isListing = listStatus.kind === 'loading';
 
   const update = (patch: Partial<KnowledgeBaseConnectionConfig>) => {
     setTestStatus({ kind: 'idle' });
+    setListStatus({ kind: 'idle' });
+    setKnowledgeBases([]);
     onChange({ ...value, ...patch });
   };
 
@@ -103,6 +120,62 @@ const KnowledgeBaseConnectionSection: React.FC<KnowledgeBaseConnectionSectionPro
     }
   };
 
+  const handleListKnowledgeBases = async (): Promise<void> => {
+    if (isTesting || isListing) return;
+    setListStatus({ kind: 'loading' });
+    setKnowledgeBases([]);
+    try {
+      const result = await listKnowledgeBases({ baseUrl: value.baseUrl, apiKey: value.apiKey });
+      if (result.ok) {
+        setKnowledgeBases(result.knowledgeBases);
+        setListStatus({ kind: 'ready' });
+        return;
+      }
+      switch (result.reason) {
+        case 'auth':
+          setListStatus({ kind: 'auth' });
+          break;
+        case 'unreachable':
+          setListStatus({ kind: 'unreachable' });
+          break;
+        default:
+          setListStatus({ kind: 'invalid' });
+          break;
+      }
+    } catch (error) {
+      console.error('[KnowledgeBase] list knowledge bases failed:', error);
+      setListStatus({ kind: 'invalid' });
+    }
+  };
+
+  const renderListFeedback = (): React.ReactNode | null => {
+    switch (listStatus.kind) {
+      case 'auth':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-500 dark:text-red-400">
+            <XCircleIcon className="h-3.5 w-3.5" />
+            {i18nService.t('kbListLoadAuthError')}
+          </span>
+        );
+      case 'unreachable':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+            <ExclamationCircleIcon className="h-3.5 w-3.5" />
+            {i18nService.t('kbListLoadUnreachable')}
+          </span>
+        );
+      case 'invalid':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-500 dark:text-red-400">
+            <XCircleIcon className="h-3.5 w-3.5" />
+            {i18nService.t('kbListLoadFailed')}
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-3 rounded-xl border px-4 py-4 border-border">
       <div className="space-y-1">
@@ -156,7 +229,7 @@ const KnowledgeBaseConnectionSection: React.FC<KnowledgeBaseConnectionSectionPro
           <button
             type="button"
             onClick={() => { void handleTestConnection(); }}
-            disabled={isTesting || baseUrlMissing || apiKeyMissing}
+            disabled={isTesting || isListing || baseUrlMissing || apiKeyMissing}
             title={apiKeyMissing ? i18nService.t('testConnectionRequiresApiKey') : undefined}
             className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-foreground transition-colors hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -165,6 +238,47 @@ const KnowledgeBaseConnectionSection: React.FC<KnowledgeBaseConnectionSectionPro
           </button>
           {!isTesting && renderTestFeedback()}
         </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => { void handleListKnowledgeBases(); }}
+            disabled={isTesting || isListing || baseUrlMissing || apiKeyMissing}
+            title={apiKeyMissing ? i18nService.t('testConnectionRequiresApiKey') : undefined}
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-surface text-foreground transition-colors hover:bg-surface-raised disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
+            {isListing ? i18nService.t('kbListLoading') : i18nService.t('kbListButton')}
+          </button>
+          {!isListing && renderListFeedback()}
+          {!isListing && listStatus.kind === 'ready' && (
+            <button
+              type="button"
+              onClick={() => { void handleListKnowledgeBases(); }}
+              className="inline-flex items-center px-2 py-1.5 text-xs font-medium rounded-lg text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+            >
+              <ArrowPathIcon className="h-3.5 w-3.5 mr-1" />
+              {i18nService.t('kbListRefresh')}
+            </button>
+          )}
+        </div>
+
+        {listStatus.kind === 'ready' && (
+          <div className="rounded-lg border border-border bg-surface-raised/40 px-3 py-2">
+            {knowledgeBases.length === 0 ? (
+              <p className="text-xs text-secondary">{i18nService.t('kbListEmpty')}</p>
+            ) : (
+              <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+                {knowledgeBases.map((kb) => (
+                  <li key={kb.id} className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm text-foreground truncate">{kb.name}</span>
+                    <span className="text-[11px] text-secondary font-mono shrink-0">{kb.id}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

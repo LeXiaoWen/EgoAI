@@ -6099,6 +6099,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             workingDirectory={currentSession?.cwd ?? ''}
             contextAgentId={currentSession?.agentId}
             sessionId={currentSession?.id}
+            showKbScopePicker={!remoteManaged && Boolean(currentSession?.id)}
+            kbScope={currentSession?.kbScope ?? { mode: 'none' }}
+            onKbScopeChange={currentSession?.id
+              ? (scope) => { void coworkService.updateSessionKbScope(currentSession.id, scope); }
+              : undefined}
             goal={!remoteManaged ? currentSession?.goal : null}
             onGoalCommand={!remoteManaged && currentSession?.id ? handleGoalCommand : undefined}
             goalStatusBarPortalTarget={showExternalGoalStatusBar ? goalStatusBarPortalTarget : null}

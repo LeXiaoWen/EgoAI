@@ -130,9 +130,17 @@ import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from 
 import {
   knowledgeBaseApiBaseUrl,
   type KnowledgeBaseConnectionConfig,
+  type WeknoraKnowledgeBaseInfo,
+  WeknoraListKnowledgeBasesChannel,
+  type WeknoraListKnowledgeBasesResult,
   WeknoraTestConnectionChannel,
   type WeknoraTestConnectionResult,
 } from '../shared/weknora/connection';
+import {
+  CoworkUpdateSessionKbScopeChannel,
+  type KnowledgeBaseScope,
+  normalizeKbScope,
+} from '../shared/weknora/kbScope';
 import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
@@ -3562,6 +3570,7 @@ if (!gotTheLock) {
         agentId?: string;
         modelOverride?: string;
         thinkingLevel?: string;
+        kbScope?: unknown;
         mediaSelection?: {
           mode: 'auto' | 'image' | 'video' | 'none';
           modelId?: string;
@@ -3645,7 +3654,12 @@ if (!gotTheLock) {
           runtimeSkillIds || [],
           options.agentId || 'main',
           options.modelOverride || '',
-          { thinkingLevel: thinkingLevel || '' },
+          {
+            thinkingLevel: thinkingLevel || '',
+            ...(options.kbScope !== undefined
+              ? { kbScope: options.kbScope as KnowledgeBaseScope }
+              : {}),
+          },
         );
 
         if (options.modelOverride) {
@@ -5372,6 +5386,119 @@ if (!gotTheLock) {
           detail: error instanceof Error ? error.message : String(error),
         };
       }
+    },
+  );
+
+  // 知识库连接「查看可用知识库」：枚举 own + shared 两个固定端点（不做通用
+  // api:fetch），归一化后去重返回 { id, name }。401/403 → auth，其它非 2xx →
+  // invalid，网络/超时 → unreachable（与测试连接语义一致）。
+  ipcMain.handle(
+    WeknoraListKnowledgeBasesChannel,
+    async (_event, raw: unknown): Promise<WeknoraListKnowledgeBasesResult> => {
+      const connection = (raw ?? {}) as Partial<KnowledgeBaseConnectionConfig>;
+      const baseUrl = typeof connection.baseUrl === 'string' ? connection.baseUrl.trim() : '';
+      const apiKey = typeof connection.apiKey === 'string' ? connection.apiKey.trim() : '';
+      if (!baseUrl || !apiKey) {
+        return { ok: false, reason: 'invalid', detail: 'Missing baseUrl or apiKey' };
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(baseUrl);
+      } catch {
+        return { ok: false, reason: 'invalid', detail: 'Malformed baseUrl' };
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { ok: false, reason: 'invalid', detail: 'baseUrl must be http(s)' };
+      }
+      try {
+        const apiPrefix = knowledgeBaseApiBaseUrl(baseUrl);
+        const headers = { 'X-API-Key': apiKey };
+        const responses = await Promise.all([
+          fetch(`${apiPrefix}/knowledge-bases`, {
+            headers,
+            signal: AbortSignal.timeout(5000),
+          }),
+          fetch(`${apiPrefix}/shared-knowledge-bases`, {
+            headers,
+            signal: AbortSignal.timeout(5000),
+          }),
+        ]);
+        for (const res of responses) {
+          if (res.status === 401 || res.status === 403) {
+            return { ok: false, reason: 'auth', detail: `HTTP ${res.status}` };
+          }
+          if (!res.ok) {
+            return { ok: false, reason: 'invalid', detail: `HTTP ${res.status}` };
+          }
+        }
+        // JSON 解析失败按空体处理；逐条读取避免 Promise<any>.json 的隐式返回推断。
+        const bodies: unknown[] = [];
+        for (const res of responses) {
+          try {
+            bodies.push(await res.json());
+          } catch {
+            bodies.push(null);
+          }
+        }
+        // 与 weknora_mcp_server._normalize_kb_entries 同规则：shared 条目取嵌套
+        // knowledge_base 对象，own 条目取本身；按 id 去重。
+        const seen = new Set<string>();
+        const knowledgeBases: WeknoraKnowledgeBaseInfo[] = [];
+        for (const body of bodies) {
+          const data = (body as { data?: unknown } | null)?.data;
+          if (!Array.isArray(data)) continue;
+          for (const entry of data) {
+            if (typeof entry !== 'object' || entry === null) continue;
+            const nested = (entry as { knowledge_base?: unknown }).knowledge_base;
+            const source =
+              nested && typeof nested === 'object' && typeof (nested as { id?: unknown }).id === 'string'
+                ? (nested as Record<string, unknown>)
+                : (entry as Record<string, unknown>);
+            const id = typeof source.id === 'string' ? source.id.trim() : '';
+            const name = typeof source.name === 'string' ? source.name.trim() : '';
+            if (!id || !name || seen.has(id)) continue;
+            seen.add(id);
+            const description = typeof source.description === 'string' ? source.description : undefined;
+            knowledgeBases.push({ id, name, ...(description ? { description } : {}) });
+          }
+        }
+        return { ok: true, knowledgeBases };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'unreachable',
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+
+  // 会话内修改知识库范围：校验后落库（touchUpdatedAt: false，避免无谓地挪动会话
+  // 排序），返回最新 session 供 renderer 刷新 Redux。下一轮出站 prompt 由运行时
+  // 读取该范围并整段重注入约束指令。
+  ipcMain.handle(
+    CoworkUpdateSessionKbScopeChannel,
+    async (
+      _event,
+      input: unknown,
+    ): Promise<{ success: boolean; session?: unknown; error?: string }> => {
+      const parsed = (input ?? {}) as { sessionId?: unknown; scope?: unknown };
+      const sessionId = typeof parsed.sessionId === 'string' ? parsed.sessionId.trim() : '';
+      const scope = normalizeKbScope(parsed.scope);
+      if (!sessionId || !scope) {
+        return { success: false, error: 'Invalid sessionId or kb scope.' };
+      }
+      const coworkStoreInstance = getCoworkStore();
+      try {
+        coworkStoreInstance.updateSession(sessionId, { kbScope: scope }, { touchUpdatedAt: false });
+      } catch (error) {
+        console.error('[CoworkKbScope] failed to persist session kb scope:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to persist kb scope',
+        };
+      }
+      return { success: true, session: coworkStoreInstance.getSession(sessionId) };
     },
   );
 

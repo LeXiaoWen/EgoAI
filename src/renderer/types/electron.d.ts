@@ -76,8 +76,10 @@ import type {
 } from '../../shared/skin/types';
 import type {
   KnowledgeBaseConnectionConfig,
+  WeknoraListKnowledgeBasesResult,
   WeknoraTestConnectionResult,
 } from '../../shared/weknora/connection';
+import type { KnowledgeBaseScope } from '../../shared/weknora/kbScope';
 import type { CoworkTempDirPreview } from './cowork';
 interface ApiResponse {
   ok: boolean;
@@ -591,6 +593,8 @@ interface IElectronAPI {
   knowledgeBase: {
     testConnection: (connection: KnowledgeBaseConnectionConfig) =>
       Promise<WeknoraTestConnectionResult>;
+    listKnowledgeBases: (connection: KnowledgeBaseConnectionConfig) =>
+      Promise<WeknoraListKnowledgeBasesResult>;
   };
   openclaw: {
     engine: {
@@ -665,6 +669,7 @@ interface IElectronAPI {
       agentId?: string;
       modelOverride?: string;
       thinkingLevel?: string;
+      kbScope?: KnowledgeBaseScope;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
     }) => Promise<{
@@ -720,6 +725,10 @@ interface IElectronAPI {
     stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
     deleteSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
     deleteSessions: (sessionIds: string[]) => Promise<{ success: boolean; error?: string }>;
+    updateSessionKbScope: (options: {
+      sessionId: string;
+      scope: KnowledgeBaseScope;
+    }) => Promise<{ success: boolean; session?: CoworkSession; error?: string }>;
     setSessionPinned: (options: {
       sessionId: string;
       pinned: boolean;

@@ -38,6 +38,7 @@ import {
   type CoworkPendingSteer,
   CoworkSteerStatus,
 } from '../../../shared/cowork/steer';
+import type { KnowledgeBaseScope } from '../../../shared/weknora/kbScope';
 import { agentService } from '../../services/agent';
 import { configService, ConfigServiceEvent } from '../../services/config';
 import { coworkService } from '../../services/cowork';
@@ -49,6 +50,7 @@ import {
 } from '../../services/coworkPromptPayload';
 import { i18nService } from '../../services/i18n';
 import { getInstalledKitSkillIds } from '../../services/kitCapability';
+import { getConfiguredKnowledgeBaseConnection } from '../../services/knowledgeBase';
 import { skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
@@ -121,6 +123,7 @@ import BrowserAnnotationAttachmentBadge from './BrowserAnnotationAttachmentBadge
 import { getClipboardAttachmentFiles } from './clipboardAttachments';
 import { CoworkUiEvent } from './constants';
 import FolderSelectorPopover from './FolderSelectorPopover';
+import KnowledgeBaseScopePicker from './KnowledgeBaseScopePicker';
 import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
 import { buildSelectedSkillRoutingPrompt } from './selectedSkillRoutingPrompt';
 import SelectedTextSnippetBadge from './SelectedTextSnippetBadge';
@@ -355,6 +358,10 @@ interface CoworkPromptInputProps {
   showFolderSelector?: boolean;
   showModelSelector?: boolean;
   showAgentSelector?: boolean;
+  /** 会话级知识库范围：本组件在「已配置知识库连接」时渲染选择器（无连接自动隐藏）。 */
+  showKbScopePicker?: boolean;
+  kbScope?: KnowledgeBaseScope | null;
+  onKbScopeChange?: (scope: KnowledgeBaseScope) => void;
   showReadOnlyContext?: boolean;
   readOnlyContextTrailingText?: string;
   contextAgentId?: string;
@@ -392,6 +399,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       showFolderSelector = false,
       showModelSelector = false,
       showAgentSelector = false,
+      showKbScopePicker = false,
+      kbScope = null,
+      onKbScopeChange,
       showReadOnlyContext = false,
       readOnlyContextTrailingText,
       contextAgentId,
@@ -2221,6 +2231,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     </div>
   ) : null;
 
+  const kbScopeControl = showKbScopePicker && onKbScopeChange && getConfiguredKnowledgeBaseConnection() ? (
+    <KnowledgeBaseScopePicker
+      value={kbScope ?? { mode: 'none' }}
+      onChange={onKbScopeChange}
+      disabled={disabled || isStreaming}
+    />
+  ) : null;
+
   const addMenuAction = !remoteManaged ? (
     <div className="relative">
       <button
@@ -3017,6 +3035,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                     </div>
                   )}
                 </div>
+                {kbScopeControl}
               </div>
             </>
           ) : (
@@ -3079,6 +3098,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                       )}
                     </>
                   )}
+                  {kbScopeControl}
                   {largeInputToolActions}
                 </div>
                 <div className={`flex shrink-0 items-center ${largeToolbarControlGapClass}`}>

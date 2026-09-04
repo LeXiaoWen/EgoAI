@@ -51,6 +51,13 @@ import {
   parseModelThinkingLevel,
 } from '../shared/providers/modelThinking';
 import {
+  type KnowledgeBaseScope,
+  normalizeKbScope,
+  parseKbScope,
+  presetDefaultKbScope,
+  serializeKbScope,
+} from '../shared/weknora/kbScope';
+import {
   ContinuityCapsuleSource,
   type CoworkContinuityCapsule,
 } from './libs/agentEngine/coworkContinuityCapsule';
@@ -537,6 +544,8 @@ export interface CoworkSession {
   forkGitBranch?: string | null;
   forkGitBaseRef?: string | null;
   goal?: CoworkGoal | null;
+  /** 会话级知识库问答范围（none/all/specific）；创建时按 agent 预设派生，恒为具体值。 */
+  kbScope?: KnowledgeBaseScope | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -775,6 +784,8 @@ interface CoworkSessionSearchOptions {
 export interface CreateCoworkSessionOptions {
   scheduledTaskId?: string | null;
   thinkingLevel?: ModelThinkingLevel | '';
+  /** 会话级知识库范围；缺省时按 agent 预设派生（knowledge-base-qa → all，其余 → none）。 */
+  kbScope?: KnowledgeBaseScope;
 }
 
 export class CoworkStore {
@@ -927,12 +938,17 @@ export class CoworkStore {
     const now = Date.now();
     const scheduledTaskId = options.scheduledTaskId?.trim() || null;
     const thinkingLevel = options.thinkingLevel ?? '';
+    // 每个会话从诞生起就落具体范围：显式传入优先，否则按 agent 预设派生
+    // （knowledge-base-qa → all，其余 → none），保证运行时注入永远读得到。
+    const kbScope =
+      normalizeKbScope(options.kbScope)
+      ?? presetDefaultKbScope(this.getAgent(agentId)?.presetId ?? agentId);
 
     this.db
       .prepare(
         `
-      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, pinned, created_at, updated_at)
-      VALUES (?, ?, NULL, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      INSERT INTO cowork_sessions (id, title, claude_session_id, scheduled_task_id, status, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, kb_scope_json, pinned, created_at, updated_at)
+      VALUES (?, ?, NULL, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     `,
       )
       .run(
@@ -946,6 +962,7 @@ export class CoworkStore {
         executionMode,
         JSON.stringify(activeSkillIds),
         agentId,
+        serializeKbScope(kbScope),
         now,
         now,
       );
@@ -965,6 +982,7 @@ export class CoworkStore {
       executionMode,
       activeSkillIds,
       agentId,
+      kbScope,
       messages: [],
       messagesOffset: 0,
       totalMessages: 0,
@@ -997,13 +1015,14 @@ export class CoworkStore {
       active_skill_ids?: string | null;
       agent_id?: string | null;
       goal_json?: string | null;
+      kb_scope_json?: string | null;
       created_at: number;
       updated_at: number;
     }
 
     const row = this.getOne<SessionRow>(
       `
-      SELECT id, title, claude_session_id, scheduled_task_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, created_at, updated_at
+      SELECT id, title, claude_session_id, scheduled_task_id, status, pinned, pin_order, cwd, system_prompt, model_override, thinking_level, execution_mode, active_skill_ids, agent_id, goal_json, kb_scope_json, created_at, updated_at
       FROM cowork_sessions
       WHERE id = ?
     `,
@@ -1049,6 +1068,7 @@ export class CoworkStore {
       totalMessages,
       ...this.getSessionForkMetadata(row.id),
       goal: this.parseGoalJson(row.goal_json),
+      kbScope: parseKbScope(row.kb_scope_json),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -1445,7 +1465,7 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'thinkingLevel' | 'executionMode' | 'goal'
+        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'thinkingLevel' | 'executionMode' | 'goal' | 'kbScope'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1504,6 +1524,10 @@ export class CoworkStore {
     if (updates.goal !== undefined) {
       setClauses.push('goal_json = ?');
       values.push(this.serializeGoal(updates.goal));
+    }
+    if (updates.kbScope !== undefined) {
+      setClauses.push('kb_scope_json = ?');
+      values.push(serializeKbScope(updates.kbScope));
     }
 
     if (setClauses.length === 0) return;

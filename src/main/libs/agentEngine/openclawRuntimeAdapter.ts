@@ -74,11 +74,6 @@ import type { SubagentRunStore } from '../../subagentRunStore';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
-  buildManagedSessionKey,
-  isManagedSessionKey,
-  parseManagedSessionKey,
-} from '../openclawManagedSessionKey';
-import {
   OPENCLAW_AGENT_TIMEOUT_SECONDS,
   type OpenClawProviderModelSource,
   resolveModelSourceForOpenClawProvider,
@@ -100,6 +95,11 @@ import {
   stripTrailingSilentReplyToken,
 } from '../openclawHistory';
 import { buildOpenClawLocalTimeContextPrompt } from '../openclawLocalTimeContextPrompt';
+import {
+  buildManagedSessionKey,
+  isManagedSessionKey,
+  parseManagedSessionKey,
+} from '../openclawManagedSessionKey';
 import { resolveOpenClawThinkingLevelForModel } from '../openclawModelThinkingLevels';
 import {
   findRedundantFinalPrefixMessageId,
@@ -116,6 +116,7 @@ import {
 } from './coworkContinuityCapsule';
 import { buildCoworkTopKEvidenceBridgeResult } from './coworkTopKEvidence';
 import { buildCoworkWorkspaceRehydrationBridge } from './coworkWorkspaceRehydration';
+import { buildKbScopeSystemPromptBlock } from './knowledgeBaseScopePrompt';
 import { OpenClawApprovalController } from './openclawApprovalController';
 import {
   applyLocalTimestampsToEntries,
@@ -4659,6 +4660,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       && isPlanImplementationApproval(effectivePrompt)
       && sessionHasProposedPlan(session.messages);
     const outboundSystemPrompt = [
+      buildKbScopeSystemPromptBlock(session.kbScope ?? null),
       systemPromptText,
       planModeExecutionApproved ? buildPlanModeExecutionOverridePrompt() : '',
     ].filter(p => p?.trim()).join('\n\n');

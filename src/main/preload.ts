@@ -56,7 +56,14 @@ import type {
   SkinListResponse,
 } from '../shared/skin/types';
 import type { KnowledgeBaseConnectionConfig } from '../shared/weknora/connection';
-import { WeknoraTestConnectionChannel } from '../shared/weknora/connection';
+import {
+  WeknoraListKnowledgeBasesChannel,
+  WeknoraTestConnectionChannel,
+} from '../shared/weknora/connection';
+import {
+  CoworkUpdateSessionKbScopeChannel,
+  type KnowledgeBaseScope,
+} from '../shared/weknora/kbScope';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -250,6 +257,8 @@ contextBridge.exposeInMainWorld('electron', {
   knowledgeBase: {
     testConnection: (connection: KnowledgeBaseConnectionConfig) =>
       ipcRenderer.invoke(WeknoraTestConnectionChannel, connection),
+    listKnowledgeBases: (connection: KnowledgeBaseConnectionConfig) =>
+      ipcRenderer.invoke(WeknoraListKnowledgeBasesChannel, connection),
   },
   openclaw: {
     engine: {
@@ -387,6 +396,7 @@ contextBridge.exposeInMainWorld('electron', {
       agentId?: string;
       modelOverride?: string;
       thinkingLevel?: string;
+      kbScope?: KnowledgeBaseScope;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string; sizeBytes?: number; localPath?: string; previewMimeType?: string; previewBase64Data?: string }>;
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
     }) => ipcRenderer.invoke('cowork:session:start', options),
@@ -429,6 +439,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('cowork:session:deleteBatch', sessionIds),
     setSessionPinned: (options: { sessionId: string; pinned: boolean }) =>
       ipcRenderer.invoke('cowork:session:pin', options),
+    updateSessionKbScope: (options: { sessionId: string; scope: KnowledgeBaseScope }) =>
+      ipcRenderer.invoke(CoworkUpdateSessionKbScopeChannel, options),
     renameSession: (options: { sessionId: string; title: string }) =>
       ipcRenderer.invoke('cowork:session:rename', options),
     forkSession: (options: {

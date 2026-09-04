@@ -7,6 +7,10 @@ import { buildGoalSettingMessageMetadata } from '../../../common/goalCommandDisp
 import { buildSessionTitleFromInput } from '../../../common/sessionTitle';
 import { buildCoworkImageAttachmentPreviews } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
+import {
+  type KnowledgeBaseScope,
+  presetDefaultKbScope,
+} from '../../../shared/weknora/kbScope';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { buildCoworkCapabilitySelection } from '../../services/coworkCapabilitySelection';
@@ -145,6 +149,16 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     currentAgentSelectedModel,
     currentAgent?.thinkingLevel,
   );
+
+  // 首页新建会话的知识库范围：默认按当前 agent 预设派生（qa → 全部，其余 → 不检索），
+  // 切 agent 时重置。已配置知识库连接时选择器才会显示。预设 agent 的 id 与 presetId
+  // 相同（createSession 在主进程再按真实 presetId 归一），此处用 id 即可识别 qa 预设。
+  const [homeKbScope, setHomeKbScope] = useState<KnowledgeBaseScope>(() =>
+    presetDefaultKbScope(currentAgent?.id ?? currentAgentId),
+  );
+  useEffect(() => {
+    setHomeKbScope(presetDefaultKbScope(currentAgent?.id ?? currentAgentId));
+  }, [currentAgentId, currentAgent?.id]);
 
   const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
     return buildCoworkCapabilitySelection(
@@ -415,6 +429,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         agentId: currentAgentId,
         modelOverride: sessionModelOverride,
         thinkingLevel: currentAgentThinkingLevel,
+        kbScope: homeKbScope,
         imageAttachments,
         selectedTextSnippets,
         browserAnnotations,
@@ -825,6 +840,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                   showFolderSelector={true}
                   showModelSelector={true}
                   showAgentSelector={true}
+                  showKbScopePicker={true}
+                  kbScope={homeKbScope}
+                  onKbScopeChange={setHomeKbScope}
                   onManageSkills={() => onShowSkills?.()}
                   onManageKits={() => onShowKits?.()}
                   onGoalCommand={handleStartGoalSession}
