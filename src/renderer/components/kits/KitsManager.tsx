@@ -29,13 +29,6 @@ const KitOperationType = {
 
 type KitOperationType = typeof KitOperationType[keyof typeof KitOperationType];
 
-const KitTab = {
-  Marketplace: 'marketplace',
-  Installed: 'installed',
-} as const;
-
-type KitTab = typeof KitTab[keyof typeof KitTab];
-
 interface KitsManagerProps {
   onTryAsking?: (text: string, kitId: string) => void;
   onUseKit?: (kitId: string) => void;
@@ -167,7 +160,6 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
   const [installedKits, setInstalledKits] = useState<Record<string, InstalledKit>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<KitTab>(KitTab.Marketplace);
   const [selectedKit, setSelectedKit] = useState<MarketplaceKit | null>(null);
   const [operatingKitId, setOperatingKitId] = useState<string | null>(null);
   const [operationType, setOperationType] = useState<KitOperationType | null>(null);
@@ -192,17 +184,8 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
     loadData();
   }, [loadData]);
 
-  const installedCount = useMemo(
-    () => kits.filter(kit => !!installedKits[kit.id]).length,
-    [kits, installedKits],
-  );
-
   const filteredKits = useMemo(() => {
     let results = kits;
-    // Tab filtering
-    if (activeTab === KitTab.Installed) {
-      results = results.filter(kit => !!installedKits[kit.id]);
-    }
     // Search filtering
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -213,22 +196,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
       });
     }
     return results;
-  }, [kits, installedKits, activeTab, searchQuery]);
-
-  useEffect(() => {
-    const query = searchQuery.trim();
-    if (!query) return undefined;
-    const timer = window.setTimeout(() => {
-      
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [activeTab, filteredKits.length, searchQuery]);
-
-  const handleTabChange = (targetTab: KitTab) => {
-    if (targetTab === activeTab) return;
-    
-    setActiveTab(targetTab);
-  };
+  }, [kits, searchQuery]);
 
   const formatKitActionError = (key: 'kitInstallFailed' | 'kitUninstallFailed', kit: MarketplaceKit) => (
     i18nService.t(key).replace('{name}', resolveLocalizedText(kit.name))
@@ -612,7 +580,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
         {i18nService.t('kitDescription')}
       </p>
 
-      {/* Sticky toolbar: Search + tabs */}
+      {/* Sticky toolbar: Search */}
       <div
         data-skin-management-toolbar="true"
         className="sticky top-0 z-10 space-y-4 bg-background pb-2"
@@ -647,38 +615,6 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
           </div>
         </div>
 
-        {/* Marketplace / Installed tabs */}
-        <div className="flex items-center border-b border-border">
-          <button
-            type="button"
-            onClick={() => handleTabChange(KitTab.Marketplace)}
-            className={`relative px-2.5 pb-2.5 pt-0.5 ${MANAGEMENT_TITLE_TEXT} font-semibold transition-colors ${
-              activeTab === KitTab.Marketplace ? 'text-foreground' : 'text-secondary hover:text-foreground'
-            }`}
-          >
-            {i18nService.t('kitMarketplace')}
-            <div className={`absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-              activeTab === KitTab.Marketplace ? 'bg-primary' : 'bg-transparent'
-            }`} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTabChange(KitTab.Installed)}
-            className={`relative px-2.5 pb-2.5 pt-0.5 ${MANAGEMENT_TITLE_TEXT} font-semibold transition-colors ${
-              activeTab === KitTab.Installed ? 'text-foreground' : 'text-secondary hover:text-foreground'
-            }`}
-          >
-            {i18nService.t('kitInstalledTab')}
-            {installedCount > 0 && (
-              <span className={`ml-1.5 rounded-full bg-surface-raised px-1.5 py-0.5 ${MANAGEMENT_META_TEXT} font-medium text-secondary`}>
-                {installedCount}
-              </span>
-            )}
-            <div className={`absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full transition-colors ${
-              activeTab === KitTab.Installed ? 'bg-primary' : 'bg-transparent'
-            }`} />
-          </button>
-        </div>
       </div>
 
       {/* Kit grid */}
@@ -702,30 +638,20 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
           <p className="text-sm text-secondary">
             {searchQuery.trim()
               ? i18nService.t('kitSearchNoResults')
-              : activeTab === KitTab.Installed
-                ? i18nService.t('kitInstalledEmpty')
-                : i18nService.t('kitEmpty')}
+              : i18nService.t('kitEmpty')}
           </p>
-          {searchQuery.trim() ? (
+          {searchQuery.trim() && (
             <button
               type="button"
               onClick={() => {
-                
+
                 setSearchQuery('');
               }}
               className="mt-3 text-sm font-medium text-primary hover:underline"
             >
               {i18nService.t('kitClearSearch')}
             </button>
-          ) : activeTab === KitTab.Installed ? (
-            <button
-              type="button"
-              onClick={() => handleTabChange(KitTab.Marketplace)}
-              className="mt-3 text-sm font-medium text-primary hover:underline"
-            >
-              {i18nService.t('kitGoInstall')}
-            </button>
-          ) : null}
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -792,7 +718,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking, onUseKit }) => {
                     </p>
 
                     <div className={`mt-3 flex flex-wrap items-center gap-1.5 ${MANAGEMENT_META_TEXT} text-secondary`}>
-                      {installed && activeTab === KitTab.Marketplace && (
+                      {installed && (
                         <>
                           <span className="inline-flex items-center gap-0.5 rounded-md bg-green-500/10 px-1.5 py-0.5 font-medium text-green-600 dark:text-green-400">
                             <CheckIcon className="h-2.5 w-2.5" />

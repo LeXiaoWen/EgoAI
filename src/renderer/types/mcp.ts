@@ -78,31 +78,6 @@ export interface McpRegistryEntry {
   optionalEnvKeys?: string[];    // optional env vars
   argPlaceholders?: string[];    // placeholder hints for args (e.g. path)
   kind?: McpRegistryEntryKind;   // defaults to a single-server registry entry
-  marketplacePosition?: number;  // 1-based preferred position; clamps to the available list
-}
-
-// Remote marketplace server entry
-export interface McpMarketplaceServer {
-  id: string;
-  name: string;
-  name_zh?: string;
-  icon?: string;
-  description_zh?: string;
-  description_en?: string;
-  category: string;
-  transportType: string;
-  command: string;
-  defaultArgs: string[];
-  requiredEnvKeys?: string[];
-  optionalEnvKeys?: string[];
-  kind?: McpRegistryEntryKind;
-}
-
-// Dynamic marketplace category from remote
-export interface McpMarketplaceCategoryInfo {
-  id: string;
-  name_zh: string;
-  name_en: string;
 }
 
 export type McpCategory =

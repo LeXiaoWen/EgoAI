@@ -1,9 +1,8 @@
 import { XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
-import { CheckIcon } from '@heroicons/react/24/outline';
 import React, { useCallback,useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { mcpCategories,mcpRegistry } from '../../data/mcpRegistry';
+import { mcpRegistry } from '../../data/mcpRegistry';
 import { i18nService } from '../../services/i18n';
 import { mcpService } from '../../services/mcp';
 import {
@@ -11,12 +10,10 @@ import {
   getRegistryEntryDisplayName,
   getRegistryEntryLocalizedDescription,
   McpInstalledItem,
-  mergeMarketplaceRegistry,
 } from '../../services/mcpRegistryPresentation';
 import { RootState } from '../../store';
 import { setMcpServers } from '../../store/slices/mcpSlice';
-import { McpMarketplaceCategoryInfo,McpRegistryEntry, McpServerConfig, McpServerFormData } from '../../types/mcp';
-import { CARD_ACTION_PILL_CLASS, DETAIL_ACTION_PILL_CLASS } from '../common/actionPillStyles';
+import { McpRegistryEntry, McpServerConfig, McpServerFormData } from '../../types/mcp';
 import CardOverflowMenu, { type CardOverflowMenuItem } from '../common/CardOverflowMenu';
 import CardToggle from '../common/CardToggle';
 import { MANAGEMENT_BODY_TEXT, MANAGEMENT_META_TEXT, MANAGEMENT_TITLE_TEXT } from '../common/managementTypography';
@@ -61,23 +58,7 @@ type DeleteTarget =
 /** Which card's detail dialog is open. Held by id so it tracks live data. */
 type DetailTarget =
   | { kind: 'server'; id: string }
-  | { kind: 'registryGroup'; registryId: string }
-  | { kind: 'marketplace'; entryId: string };
-
-/** "All" leads and resolves via i18n; remote categories carry their own names. */
-const buildCategoryOptions = (
-  categories: McpMarketplaceCategoryInfo[],
-): Array<{ id: string; key: string; name_zh?: string; name_en?: string }> => [
-  { id: 'all', key: 'mcpCategoryAll' },
-  ...categories
-    .filter(category => category.id !== 'all')
-    .map(category => ({
-      id: category.id,
-      key: '',
-      name_zh: category.name_zh,
-      name_en: category.name_en,
-    })),
-];
+  | { kind: 'registryGroup'; registryId: string };
 
 /** Management actions stay hidden until the card is hovered or focused. */
 const CARD_MENU_REVEAL_CLASS =
@@ -95,20 +76,7 @@ const McpManager: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null);
   const [installingRegistry, setInstallingRegistry] = useState<McpRegistryEntry | null>(null);
-  const [activeCategory, setActiveCategory] = useState('all');
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
-  // First frame renders the cached copy of the last fetch, so entries and
-  // localized names don't visibly swap in when the live response lands. With
-  // no cache yet (first run) the marketplace shows a skeleton instead — the
-  // server is the only source of listing data, mirroring the Skills page.
-  const [initialCache] = useState(() => mcpService.getCachedMarketplace());
-  const [isLoadingMarketplace, setIsLoadingMarketplace] = useState(initialCache === null);
-  const [dynamicRegistry, setDynamicRegistry] = useState<McpRegistryEntry[]>(() =>
-    mergeMarketplaceRegistry(initialCache?.registry ?? mcpRegistry, mcpRegistry),
-  );
-  const [dynamicCategories, setDynamicCategories] = useState<ReadonlyArray<{ id: string; key: string; name_zh?: string; name_en?: string }>>(() =>
-    initialCache ? buildCategoryOptions(initialCache.categories) : mcpCategories,
-  );
   const currentLanguage = i18nService.getLanguage();
 
   useEffect(() => {
@@ -129,28 +97,6 @@ const McpManager: React.FC = () => {
     });
   }, [dispatch]);
 
-  useEffect(() => {
-    let isActive = true;
-    const fetchMarketplace = async () => {
-      const result = await mcpService.fetchMarketplace();
-      if (!isActive) return;
-      setIsLoadingMarketplace(false);
-      if (!result) return;
-      setDynamicRegistry(mergeMarketplaceRegistry(result.registry, mcpRegistry));
-      setDynamicCategories(buildCategoryOptions(result.categories));
-    };
-    fetchMarketplace();
-    return () => { isActive = false; };
-  }, []);
-
-  const installedRegistryIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const s of servers) {
-      if (s.registryId) ids.add(s.registryId);
-    }
-    return ids;
-  }, [servers]);
-
   const getRegistryEntryDescription = useCallback((entry: McpRegistryEntry): string => {
     const remoteDescription = getRegistryEntryLocalizedDescription(entry, currentLanguage);
     if (remoteDescription) return remoteDescription;
@@ -158,7 +104,7 @@ const McpManager: React.FC = () => {
     return '';
   }, [currentLanguage]);
 
-  /** Marketplace entries may carry per-language names; `name` is the fallback. */
+  /** Registry entries may carry per-language names; `name` is the fallback. */
   const getRegistryEntryName = useCallback(
     (entry: McpRegistryEntry): string => getRegistryEntryDisplayName(entry, currentLanguage),
     [currentLanguage],
@@ -172,15 +118,15 @@ const McpManager: React.FC = () => {
 
   const getRegistryEntryForServer = useCallback((server: McpServerConfig): McpRegistryEntry | undefined => {
     if (server.registryId) {
-      return dynamicRegistry.find(entry => entry.id === server.registryId);
+      return mcpRegistry.find(entry => entry.id === server.registryId);
     }
     if (!server.isBuiltIn) return undefined;
-    return dynamicRegistry.find((entry) => (
+    return mcpRegistry.find((entry) => (
       entry.name.toLowerCase() === server.name.toLowerCase()
       && entry.transportType === server.transportType
       && entry.command === server.command
     ));
-  }, [dynamicRegistry]);
+  }, []);
 
   const getTransportSummary = (server: McpServerConfig): string => {
     if (server.transportType === 'stdio') {
@@ -216,7 +162,7 @@ const McpManager: React.FC = () => {
 
   /**
    * A server stores the name it had when it was installed, in whatever language
-   * was active then. For marketplace servers the registry entry is the live,
+   * was active then. For built-in servers the registry entry is the live,
    * localized source, so it wins; hand-configured servers only have their own.
    */
   const getServerDisplayName = useCallback((server: McpServerConfig): string => {
@@ -245,8 +191,8 @@ const McpManager: React.FC = () => {
   );
 
   const installedItems = useMemo(
-    () => buildInstalledMcpItems(servers, dynamicRegistry),
-    [dynamicRegistry, servers],
+    () => buildInstalledMcpItems(servers, mcpRegistry),
+    [servers],
   );
 
   const getRegistryGroupName = useCallback((item: RegistryGroupItem): string => {
@@ -302,23 +248,6 @@ const McpManager: React.FC = () => {
     installedItems,
     searchQuery,
   ]);
-
-  const filteredMarketplace = useMemo(() => {
-    const query = searchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
-    let entries = [...dynamicRegistry];
-    if (query) {
-      entries = entries.filter(e =>
-        getRegistryEntryName(e).toLowerCase().includes(query)
-        || e.name.toLowerCase().includes(query)
-        || getRegistryEntryDescription(e).toLowerCase().includes(query)
-      );
-    }
-    if (activeCategory !== 'all') {
-      entries = entries.filter(e => e.category === activeCategory);
-    }
-    return entries;
-  }, [searchQuery, activeCategory, dynamicRegistry, getRegistryEntryDescription, getRegistryEntryName]);
-
 
   const handleToggleEnabled = async (serverId: string) => {
     const targetServer = servers.find(s => s.id === serverId);
@@ -453,13 +382,6 @@ const McpManager: React.FC = () => {
     },
   ];
 
-  const handleInstallFromRegistry = (entry: McpRegistryEntry) => {
-    
-    setEditingServer(null);
-    setInstallingRegistry(entry);
-    setIsFormOpen(true);
-  };
-
   const handleCloseForm = () => {
     
     setIsFormOpen(false);
@@ -494,8 +416,7 @@ const McpManager: React.FC = () => {
         dispatch(setMcpServers(result.servers));
       }
       
-      // A hand-added server lands in Installed, so go show it. Installing from
-      // the marketplace leaves the user where they were browsing.
+      // A hand-added server lands in Installed, so go show it.
       if (!isRegistryInstall) setActiveTab(McpTab.Installed);
     }
     handleCloseForm();
@@ -536,16 +457,6 @@ const McpManager: React.FC = () => {
 
   const existingNames = useMemo(() => servers.map(s => s.name), [servers]);
 
-  const getCategoryLabel = (entry: McpRegistryEntry): string => {
-    const category = dynamicCategories.find(item => item.id === entry.category);
-    if (category) {
-      const localized = currentLanguage === 'zh' ? category.name_zh : category.name_en;
-      if (localized) return localized;
-      if (category.key) return i18nService.t(category.key);
-    }
-    return entry.categoryKey ? i18nService.t(entry.categoryKey) : entry.category;
-  };
-
   const openServerDetail = (server: McpServerConfig) => {
     
     setDetailTarget({ kind: 'server', id: server.id });
@@ -554,11 +465,6 @@ const McpManager: React.FC = () => {
   const openRegistryGroupDetail = (item: RegistryGroupItem) => {
     
     setDetailTarget({ kind: 'registryGroup', registryId: item.registryId });
-  };
-
-  const openMarketplaceDetail = (entry: McpRegistryEntry) => {
-    
-    setDetailTarget({ kind: 'marketplace', entryId: entry.id });
   };
 
   const closeDetail = () => setDetailTarget(null);
@@ -593,8 +499,7 @@ const McpManager: React.FC = () => {
         )}
         meta={(
           <>
-            {/* Only the hand-configured origin is labelled; from the
-                marketplace is the norm. */}
+            {/* Only the hand-configured origin is labelled. */}
             {!server.isBuiltIn && (
               <span className="shrink-0 rounded bg-primary-muted px-1.5 py-0.5 font-medium text-primary">
                 {i18nService.t('mcpCustom')}
@@ -646,15 +551,6 @@ const McpManager: React.FC = () => {
     );
   };
 
-  /**
-   * Listen for MCP bridge sync events from the main process.
-   * Main process broadcasts syncStart/syncDone after server config changes.
-   */
-  const marketplaceCount = useMemo(
-    () => dynamicRegistry.length,
-    [dynamicRegistry]
-  );
-
   const DETAIL_FOOTER_BUTTON_CLASS =
     `inline-flex items-center gap-1.5 rounded-xl px-2.5 py-2 ${MANAGEMENT_BODY_TEXT} text-secondary transition-colors hover:bg-surface-raised hover:text-foreground`;
 
@@ -688,7 +584,7 @@ const McpManager: React.FC = () => {
       { label: i18nService.t('mcpDetailTransport'), value: server.transportType },
       {
         label: i18nService.t('mcpDetailSource'),
-        value: i18nService.t(server.isBuiltIn || server.registryId ? 'mcpSourceMarketplace' : 'mcpCustom'),
+        value: i18nService.t(server.isBuiltIn || server.registryId ? 'mcpSourceBuiltIn' : 'mcpCustom'),
       },
     ];
     const info: McpDetailInfoRow[] = [];
@@ -813,90 +709,6 @@ const McpManager: React.FC = () => {
     );
   };
 
-  const renderMarketplaceDetail = (entry: McpRegistryEntry) => {
-    const isInstalled = installedRegistryIds.has(entry.id);
-    const installedServers = servers.filter(server => server.registryId === entry.id);
-    const stats: McpDetailStat[] = [
-      { label: i18nService.t('mcpDetailCategory'), value: getCategoryLabel(entry) },
-      { label: i18nService.t('mcpDetailTransport'), value: entry.transportType },
-      ...(entry.requiredEnvKeys && entry.requiredEnvKeys.length > 0
-        ? [{
-          label: i18nService.t('mcpDetailRequiredKeys'),
-          value: String(entry.requiredEnvKeys.length),
-        }]
-        : []),
-    ];
-    const info: McpDetailInfoRow[] = [];
-    const command = getStdioCommandSummary(entry.command, entry.defaultArgs);
-    if (command) {
-      info.push({
-        label: i18nService.t(entry.transportType === 'stdio' ? 'mcpDetailCommand' : 'mcpDetailUrl'),
-        value: entry.transportType === 'stdio'
-          ? [entry.command, ...(entry.defaultArgs ?? [])].join(' ')
-          : command,
-        mono: true,
-      });
-    }
-    if (entry.requiredEnvKeys && entry.requiredEnvKeys.length > 0) {
-      info.push({
-        label: i18nService.t('mcpDetailRequiredKeys'),
-        value: entry.requiredEnvKeys.join(', '),
-        mono: true,
-      });
-    }
-    if (entry.optionalEnvKeys && entry.optionalEnvKeys.length > 0) {
-      info.push({
-        label: i18nService.t('mcpDetailOptionalKeys'),
-        value: entry.optionalEnvKeys.join(', '),
-        mono: true,
-      });
-    }
-    info.push({ label: i18nService.t('mcpDetailId'), value: entry.id, mono: true });
-
-    return (
-      <McpDetailModal
-        title={getRegistryEntryName(entry)}
-        icon={entry.icon}
-        description={getRegistryEntryDescription(entry)}
-        stats={stats}
-        info={info}
-        onClose={closeDetail}
-        action={isInstalled ? (
-          <span className={`inline-flex flex-shrink-0 items-center gap-1 ${MANAGEMENT_BODY_TEXT} text-muted`}>
-            <CheckIcon className="h-4 w-4" />
-            {i18nService.t('mcpInstalled')}
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { closeDetail(); handleInstallFromRegistry(entry); }}
-            className={DETAIL_ACTION_PILL_CLASS}
-          >
-            {i18nService.t('mcpInstall')}
-          </button>
-        )}
-        footer={isInstalled && installedServers.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => {
-              closeDetail();
-              handleRequestDeleteRegistry(
-                entry.id,
-                getRegistryEntryName(entry),
-                installedServers,
-                entry,
-              );
-            }}
-            className={DETAIL_FOOTER_DESTRUCTIVE_CLASS}
-          >
-            <TrashIcon className="h-4 w-4" />
-            {i18nService.t('mcpUninstall')}
-          </button>
-        ) : undefined}
-      />
-    );
-  };
-
   /** The dialog reads live state by id, so toggling inside it stays in sync. */
   const renderDetailModal = () => {
     if (!detailTarget) return null;
@@ -911,8 +723,7 @@ const McpManager: React.FC = () => {
       );
       return group ? renderRegistryGroupDetail(group) : null;
     }
-    const entry = dynamicRegistry.find(item => item.id === detailTarget.entryId);
-    return entry ? renderMarketplaceDetail(entry) : null;
+    return null;
   };
 
   const tabClass = (tab: McpTab) =>
@@ -985,9 +796,7 @@ const McpManager: React.FC = () => {
         {/* Tabs */}
         <div className="flex items-center border-b border-border">
           {MCP_TAB_ORDER.map((tab) => {
-            const count = tab === McpTab.Installed
-              ? installedItems.length
-              : (isLoadingMarketplace ? 0 : marketplaceCount);
+            const count = installedItems.length;
             return (
               <button
                 key={tab}
@@ -1010,28 +819,6 @@ const McpManager: React.FC = () => {
           })}
         </div>
 
-        {/* Category filter pills (Marketplace only) */}
-        {activeTab === McpTab.Marketplace && !isLoadingMarketplace && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {dynamicCategories.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => {
-                  
-                  setActiveCategory(cat.id);
-                }}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  activeCategory === cat.id
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-raised text-secondary hover:text-foreground'
-                }`}
-              >
-                {(i18nService.getLanguage() === 'zh' ? cat.name_zh : cat.name_en) || i18nService.t(cat.key)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div>
@@ -1048,16 +835,6 @@ const McpManager: React.FC = () => {
                 {i18nService.t('mcpInstalledEmptyHint')}
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    
-                    setActiveTab(McpTab.Marketplace);
-                  }}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-raised"
-                >
-                  {i18nService.t('mcpInstalledEmptyMarket')}
-                </button>
                 <button
                   type="button"
                   onClick={handleOpenCreateForm}
@@ -1136,86 +913,6 @@ const McpManager: React.FC = () => {
               return renderServerCard(item.server);
             })}
           </div>
-        )
-      )}
-
-      {/* ── Tab: Marketplace ────────────────────────────── */}
-      {activeTab === McpTab.Marketplace && (
-        isLoadingMarketplace ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4" aria-hidden="true">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="animate-pulse rounded-2xl border border-border bg-surface p-4">
-              <div className="mb-3 flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-[10px] bg-surface-raised" />
-                <div className="h-3.5 w-1/3 rounded bg-surface-raised" />
-              </div>
-              <div className="space-y-2">
-                <div className="h-3 w-full rounded bg-surface-raised" />
-                <div className="h-3 w-2/3 rounded bg-surface-raised" />
-              </div>
-              <div className="mt-3 flex items-center gap-1.5">
-                <div className="h-4 w-12 rounded bg-surface-raised" />
-                <div className="h-4 w-10 rounded bg-surface-raised" />
-              </div>
-            </div>
-          ))}
-        </div>
-        ) : (
-        <div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-            {filteredMarketplace.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-sm text-secondary">
-                {i18nService.t('noMcpServersAvailable')}
-              </div>
-            ) : (
-              filteredMarketplace.map((entry) => {
-                const isInstalled = installedRegistryIds.has(entry.id);
-                const requiredEnvKeyCount = entry.requiredEnvKeys?.length ?? 0;
-                return (
-                  <McpCard
-                    key={entry.id}
-                    title={getRegistryEntryName(entry)}
-                    description={getRegistryEntryDescription(entry)}
-                    icon={entry.icon}
-                    onOpenDetail={() => openMarketplaceDetail(entry)}
-                    actions={isInstalled ? (
-                      /* Installed is a fact, not an action — it stays quiet. */
-                      <span className={`inline-flex h-[26px] flex-shrink-0 items-center gap-1 px-1 ${MANAGEMENT_META_TEXT} text-muted`}>
-                        <CheckIcon className="h-3.5 w-3.5" />
-                        {i18nService.t('mcpInstalled')}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(event) => { event.stopPropagation(); handleInstallFromRegistry(entry); }}
-                        className={CARD_ACTION_PILL_CLASS}
-                      >
-                        {i18nService.t('mcpInstall')}
-                      </button>
-                    )}
-                    meta={(
-                      <>
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ${TRANSPORT_BADGE_COLORS[entry.transportType] || ''}`}>
-                          {entry.transportType}
-                        </span>
-                        <span className="shrink-0 text-secondary/50">·</span>
-                        <span className="min-w-0 truncate">{getStdioCommandSummary(entry.command, entry.defaultArgs)}</span>
-                        {requiredEnvKeyCount > 0 && (
-                          <>
-                            <span className="shrink-0 text-secondary/50">·</span>
-                            <span className="shrink-0 text-amber-500 dark:text-amber-400">
-                              {requiredEnvKeyCount} key{requiredEnvKeyCount > 1 ? 's' : ''}
-                            </span>
-                          </>
-                        )}
-                      </>
-                    )}
-                  />
-                );
-              })
-            )}
-          </div>
-        </div>
         )
       )}
 

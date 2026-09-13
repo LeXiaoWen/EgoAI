@@ -44,13 +44,8 @@ vi.mock('./appUpdateInstaller', () => ({
 }));
 
 vi.mock('./endpoints', () => ({
-  getUpdateCheckUrl: () => 'https://updates.example.com/auto',
-  getManualUpdateCheckUrl: () => 'https://updates.example.com/manual',
+  getGitHubReleaseApiUrl: () => 'https://api.github.com/repos/LeXiaoWen/EgoAI/releases/latest',
   getFallbackDownloadUrl: () => 'https://updates.example.com/download-list',
-}));
-
-vi.mock('./keyfromAttribution', () => ({
-  getKeyfromAttribution: () => ({ firstKeyfrom: 'none', latestKeyfrom: 'none' }),
 }));
 
 import { APP_UPDATE_READY_FILE_KEY_PREFIX, AppUpdateCoordinator } from './appUpdateCoordinator';
@@ -68,6 +63,18 @@ function createStoreStub(): SqliteStore {
       map.delete(key);
     },
   } as unknown as SqliteStore;
+}
+
+type GitHubAsset = { name?: string; browser_download_url?: string };
+
+function githubRelease(assets: GitHubAsset[] = []) {
+  return {
+    tag_name: `v${READY_VERSION}`,
+    name: null,
+    published_at: '2026-06-10T00:00:00Z',
+    body: null,
+    assets,
+  };
 }
 
 function readyFileStoreKey(source: AppUpdateSource): string {
@@ -132,17 +139,9 @@ describe('AppUpdateCoordinator', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-            windowsX64: {
-              url: 'http://downloads.example/EgoAI.exe',
-            },
-          },
-        },
-      }),
+      json: async () => githubRelease([
+        { browser_download_url: 'http://downloads.example/EgoAI.exe' },
+      ]),
     });
     const coordinator = new AppUpdateCoordinator(createStoreStub());
 
@@ -162,15 +161,9 @@ describe('AppUpdateCoordinator', () => {
     const downloadedFile = path.join(updatesDir, 'egoai-update-auto-1.exe');
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-            windowsX64: { url: installerUrl },
-          },
-        },
-      }),
+      json: async () => githubRelease([
+        { browser_download_url: installerUrl },
+      ]),
     });
     mocks.downloadUpdate.mockImplementation(async () => {
       fs.mkdirSync(updatesDir, { recursive: true });
@@ -201,14 +194,7 @@ describe('AppUpdateCoordinator', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-          },
-        },
-      }),
+      json: async () => githubRelease(),
     });
     const coordinator = new AppUpdateCoordinator(createStoreStub());
 
@@ -401,17 +387,9 @@ describe('AppUpdateCoordinator', () => {
     seedReadyFile(store, updatesDir, AppUpdateSource.Auto);
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-            windowsX64: {
-              url: `https://updates.example.com/EgoAI-${READY_VERSION}.exe`,
-            },
-          },
-        },
-      }),
+      json: async () => githubRelease([
+        { browser_download_url: `https://updates.example.com/EgoAI-${READY_VERSION}.exe` },
+      ]),
     });
     const coordinator = new AppUpdateCoordinator(store);
 
@@ -490,17 +468,9 @@ describe('AppUpdateCoordinator', () => {
     const store = createStoreStub();
     mocks.fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-            windowsX64: {
-              url: `https://updates.example.com/EgoAI-${READY_VERSION}.exe`,
-            },
-          },
-        },
-      }),
+      json: async () => githubRelease([
+        { browser_download_url: `https://updates.example.com/EgoAI-${READY_VERSION}.exe` },
+      ]),
     });
     const coordinator = new AppUpdateCoordinator(store);
 
@@ -551,22 +521,9 @@ describe('AppUpdateCoordinator', () => {
 
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: async () => ({
-        code: 0,
-        data: {
-          value: {
-            version: READY_VERSION,
-            date: '2026-06-10',
-            changeLog: {
-              ch: { title: '', content: [] },
-              en: { title: '', content: [] },
-            },
-            macIntel: { url: `https://updates.example.com/egoai-${READY_VERSION}.dmg` },
-            macArm: { url: `https://updates.example.com/egoai-${READY_VERSION}.dmg` },
-            windowsX64: { url: `https://updates.example.com/egoai-${READY_VERSION}.exe` },
-          },
-        },
-      }),
+      json: async () => githubRelease([
+        { name: 'EgoAI.dmg', browser_download_url: `https://updates.example.com/egoai-${READY_VERSION}.dmg` },
+      ]),
     });
 
     const result = await coordinator.checkNow({ manual: true });

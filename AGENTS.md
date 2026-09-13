@@ -6,7 +6,7 @@ appears stale.
 
 ## Instruction Scope
 
-This root `AGENTS.md` is repository-level guidance for LobsterAI. Codex may also
+This root `AGENTS.md` is repository-level guidance for EgoAI. Codex may also
 load more specific `AGENTS.md` or `AGENTS.override.md` files from subdirectories
 when the current working directory is inside those subtrees. More specific
 instructions override broader ones.
@@ -17,16 +17,18 @@ historical context and verify against the current source.
 
 ## Project Snapshot
 
-LobsterAI is an Electron + React desktop application. Its core user-facing
-product is a desktop agent experience that can work with local projects,
-files, browser previews, IM channels, skills, MCP servers, scheduled tasks,
-and rich artifacts.
+EgoAI is an Electron + React desktop application. Its core user-facing product
+is a local-first desktop agent experience that can work with local projects,
+files, terminal commands, browser previews, skills, MCP servers, knowledge
+bases (via a connected WeKnora instance), and rich artifacts. There is no cloud
+account: providers are configured manually with per-provider API keys, and
+session/app data stays on the machine.
 
 ### Cowork vs OpenClaw
 
-`Cowork` is LobsterAI's product/session layer. The name is historical: it
+`Cowork` is EgoAI's product/session layer. The name is historical: it
 started as a Claude Code-like in-house coding assistant, but in the current
-codebase it means the LobsterAI layer that owns sessions, messages,
+codebase it means the EgoAI layer that owns sessions, messages,
 permissions, UI state, local persistence, context usage, artifacts, and IPC
 contracts.
 
@@ -173,15 +175,15 @@ Main integration points:
 
 ### Patch Policy
 
-When changing OpenClaw-related behavior, first look for a LobsterAI-side
+When changing OpenClaw-related behavior, first look for an EgoAI-side
 integration point: adapter code, config sync, plugin configuration, runtime
 packaging, UI handling, or local data-layer handling. Prefer changing
-LobsterAI when the behavior is product-specific or can be expressed cleanly at
+EgoAI when the behavior is product-specific or can be expressed cleanly at
 the integration boundary.
 
 Use version-scoped OpenClaw patches only when the required behavior is inside
-OpenClaw and there is no clean LobsterAI-side hook. Do not avoid a patch by
-adding brittle or contorted LobsterAI workarounds.
+OpenClaw and there is no clean EgoAI-side hook. Do not avoid a patch by
+adding brittle or contorted EgoAI workarounds.
 
 Patches live under `scripts/patches/<openclaw.version>/` and are applied by
 `npm run openclaw:patch`. Do not leave manual edits in the sibling OpenClaw
@@ -192,33 +194,33 @@ tied to the pinned version.
 
 ### Main Process
 
-`src/main/main.ts` wires Electron lifecycle, IPC, auth, logging, OpenClaw
-startup, Cowork routing, IM gateways, scheduled tasks, skills, MCP, updates,
+`src/main/main.ts` wires Electron lifecycle, IPC, logging, OpenClaw startup,
+Cowork routing, WeKnora knowledge-base connection, skills, MCP, updates,
 artifact preview/share handlers, and shell/dialog bridges.
 
 Key modules:
 - `src/main/libs/openclawEngineManager.ts`: manages the bundled OpenClaw
   gateway process, state directory, config path, ports, tokens, gateway logs,
   restart/repair behavior, and runtime readiness.
-- `src/main/libs/openclawConfigSync.ts`: renders LobsterAI state into
-  OpenClaw config: providers/models, agents, IM bindings, plugins, MCP servers,
-  skills extra dirs, sandbox mode, and managed workspace `AGENTS.md` sections.
+- `src/main/libs/openclawConfigSync.ts`: renders EgoAI state into OpenClaw
+  config: providers/models, agents, plugins, MCP servers, skills extra dirs,
+  sandbox mode, and managed workspace `AGENTS.md` sections.
 - `src/main/libs/agentEngine/openclawRuntimeAdapter.ts`: translates between
   OpenClaw gateway events and Cowork stream events.
 - `src/main/libs/agentEngine/coworkEngineRouter.ts`: Cowork-facing runtime
   router. It currently routes to OpenClaw only.
+- `src/main/libs/agentEngine/knowledgeBaseScopePrompt.ts`: renders the
+  session-level knowledge-base scope into the outbound system prompt (retrieval
+  is 100% agent-driven; EgoAI does no pre-retrieval).
 - `src/main/coworkStore.ts`: Cowork sessions, messages, config, agents, memory
-  metadata, and related CRUD over SQLite.
+  metadata, session `kbScope`, and related CRUD over SQLite.
 - `src/main/sqliteStore.ts`: database initialization and migrations.
 - `src/main/agentManager.ts`: agent CRUD and preset installation wrapper.
-- `src/main/skillManager.ts`: bundled/user skill sync, install/upgrade,
-  security scan, enable state, and routing prompt support.
-- `src/main/im/`: IM gateway config, status, delivery, session mapping, media,
-  pairing, and platform-specific handling.
-- `src/scheduledTask/`: scheduled task model, cron gateway service, policies,
-  migrations, and local metadata.
-- `src/main/mcp/`: MCP server storage, runtime, marketplace, and launch
-  resolution.
+- `src/main/skills/`: bundled/user skill sync, install/upgrade, security scan,
+  enable state, and routing prompt support.
+- `src/main/mcp/`: user-added MCP server storage, runtime, and launch
+  resolution (including the built-in `weknora` MCP server). The online MCP
+  marketplace has been retired; servers are added by hand.
 
 Security model:
 - Renderer uses `src/main/preload.ts` and `contextBridge`.
@@ -246,9 +248,6 @@ Main areas:
   session UI.
 - `src/renderer/components/artifacts/`: artifact panel, badges, preview cards,
   renderers, and file directory view.
-- `src/renderer/components/scheduledTasks/`: scheduled task list, form, detail,
-  run history, and template UI.
-- `src/renderer/components/im/`: IM platform settings and multi-instance UI.
 - `src/renderer/components/skills/`: skill management UI.
 - `src/renderer/components/mcp/`: MCP management UI.
 - `src/renderer/services/i18n.ts`: renderer i18n dictionary and `t()` helper.
@@ -261,22 +260,22 @@ shared constants over duplicated string literals.
 
 Useful shared areas:
 - `src/shared/agent/`
-- `src/shared/auth/`
 - `src/shared/cowork/`
 - `src/shared/artifactPreview/`
 - `src/shared/mcp/`
 - `src/shared/providers/`
-- `src/shared/platform/`
-- `src/scheduledTask/constants.ts`
+- `src/shared/weknora/` (knowledge-base scope types, e.g. `kbScope`)
 
 ## Data Model
 
-SQLite lives in Electron `app.getPath('userData')` as `lobsterai.sqlite`.
+SQLite lives in Electron `app.getPath('userData')` as `egoai.sqlite` (the file
+name is `DB_FILENAME` in `src/main/appConstants.ts`).
 
 Important tables:
-- `kv`: app-wide JSON values, including auth/config flags.
-- `cowork_sessions`: local Cowork session records. Some column names are
-  historical, e.g. `claude_session_id`.
+- `kv`: app-wide JSON values and config flags.
+- `cowork_sessions`: local Cowork session records, including the session-level
+  `kb_scope_json` (knowledge-base scope). Some column names are historical,
+  e.g. `claude_session_id`.
 - `cowork_messages`: local session messages.
 - `cowork_session_capsules`: continuity/context capsules for sessions.
 - `cowork_config`: Cowork settings such as working directory, execution mode,
@@ -285,17 +284,11 @@ Important tables:
   directory, enable state, and pinning.
 - `user_memories`, `user_memory_sources`: legacy/local memory tracking used for
   migration and source metadata.
-- `im_config`: IM platform configuration.
-- `im_session_mappings`: IM conversation to Cowork/OpenClaw session mapping,
-  including agent ID and OpenClaw session key.
 - `mcp_servers`, `mcp_launch_resolutions`: MCP server configuration and resolved
   launch metadata.
 - `user_plugins`: user-installed OpenClaw plugins and enabled/config state.
 - `subagent_runs`, `subagent_messages`: subagent run tracking and fetched
   conversation history.
-- `scheduled_task_meta`: local origin/binding metadata for OpenClaw cron jobs.
-  Actual scheduled task definitions and run history are managed through
-  OpenClaw cron APIs/state.
 
 Migrations are mostly ad-hoc `PRAGMA table_info()` checks in
 `src/main/sqliteStore.ts` and feature-specific migration modules.
@@ -305,10 +298,10 @@ Migrations are mostly ad-hoc `PRAGMA table_info()` checks in
 OpenClaw runtime state is under Electron `userData/openclaw`.
 
 Important paths:
-- `%APPDATA%/LobsterAI/openclaw/state/openclaw.json` on Windows: generated
+- `%APPDATA%/EgoAI/openclaw/state/openclaw.json` on Windows: generated
   OpenClaw config.
-- `%APPDATA%/LobsterAI/openclaw/state/workspace-main`: main agent workspace.
-- `%APPDATA%/LobsterAI/openclaw/state/workspace-{agentId}`: non-main agent
+- `%APPDATA%/EgoAI/openclaw/state/workspace-main`: main agent workspace.
+- `%APPDATA%/EgoAI/openclaw/state/workspace-{agentId}`: non-main agent
   workspaces.
 
 The main workspace path is resolved by `getMainAgentWorkspacePath()`.
@@ -316,7 +309,7 @@ Non-main agent workspaces follow OpenClaw's state-dir fallback and are synced by
 `openclawConfigSync.ts`.
 
 Workspace files include:
-- `AGENTS.md`: OpenClaw workspace instructions with a LobsterAI-managed section.
+- `AGENTS.md`: OpenClaw workspace instructions with an EgoAI-managed section.
 - `MEMORY.md`: durable memory facts.
 - `memory/YYYY-MM-DD.md`: daily notes.
 - `USER.md`: user profile/context.
@@ -332,15 +325,15 @@ Main process logging uses `electron-log` via `src/main/logger.ts`, which
 intercepts `console.*`.
 
 Main logs:
-- Windows: `%APPDATA%/LobsterAI/logs/main-YYYY-MM-DD.log`
-- macOS: `~/Library/Logs/LobsterAI/main-YYYY-MM-DD.log`
-- Linux: `~/.config/LobsterAI/logs/main-YYYY-MM-DD.log`
+- Windows: `%APPDATA%/EgoAI/logs/main-YYYY-MM-DD.log`
+- macOS: `~/Library/Logs/EgoAI/main-YYYY-MM-DD.log`
+- Linux: `~/.config/EgoAI/logs/main-YYYY-MM-DD.log`
 
 Main log retention is 7 days. Max file size is 80 MB; overflow rotates to
 `.old.log`.
 
 OpenClaw gateway capture logs:
-- Windows: `%APPDATA%/LobsterAI/openclaw/logs/gateway-YYYY-MM-DD.log`
+- Windows: `%APPDATA%/EgoAI/openclaw/logs/gateway-YYYY-MM-DD.log`
 - Retention is 3 days.
 
 OpenClaw's own daily logs may also exist in a temp directory. On Windows,
@@ -458,34 +451,38 @@ HTML file artifacts use a local preview server for fidelity. Inline HTML uses
 an iframe sandbox. SVG and file previews must remain sanitized/isolated.
 Document/office-style renderers live under `components/artifacts/renderers/`.
 
-## IM, Agents, MCP, And Scheduled Tasks
+## Agents, MCP, And Knowledge Base (WeKnora)
 
 Agents:
 - Main agent ID is `main`.
 - Agents can be custom or preset.
 - Agent data includes identity, system prompt, model, skill IDs, icon, enabled
   state, pinning, and optional working directory.
-- IM channels can bind to specific agents.
-
-IM:
-- IM config is stored in SQLite and synced into OpenClaw config where the
-  channel is OpenClaw-backed.
-- Multi-instance platforms include DingTalk, Feishu/Lark, QQ, Telegram,
-  Discord, WeCom, NIM, POPO, and email.
-- Weixin and NetEase Bee have single-instance style config.
-- IM session mappings preserve conversation/session/agent relationships.
+- Preset agents live in `src/main/presetAgents.ts`, including
+  `knowledge-base-qa` (knowledge-base Q&A assistant) and `bid-designer`.
 
 MCP:
 - User-configured MCP servers live in `mcp_servers`.
 - Resolved launch metadata lives in `mcp_launch_resolutions`.
 - OpenClaw config sync writes enabled servers into native `mcp.servers`.
+- The built-in `weknora` MCP server (stdio) reads the configured knowledge-base
+  connection (`baseUrl` + API key); see `resolveWeknoraMcpServer` in
+  `src/main/mcp/mcpRuntime.ts`.
 
-Scheduled tasks:
-- The UI and local policy code live in `src/scheduledTask/` and
-  `src/renderer/components/scheduledTasks/`.
-- Execution uses OpenClaw cron APIs through `CronJobService`.
-- `scheduled_task_meta` stores only local origin/binding data that OpenClaw cron
-  jobs do not support as custom fields.
+Knowledge base (WeKnora):
+- EgoAI is a pure client: it does NOT embed or launch a WeKnora process. The
+  user points EgoAI at a WeKnora instance via a "knowledge-base connection".
+- The built-in `weknora` MCP server exposes retrieval tools such as
+  `list_knowledge_bases`, `list_shared_knowledge_bases`, `hybrid_search`, and
+  wiki search to the agent. Retrieval is 100% agent-driven.
+- Sessions carry a knowledge-base scope (`kbScope`, serialized to
+  `cowork_sessions.kb_scope_json`): `none` / `all` / specific knowledge bases.
+  `knowledgeBaseScopePrompt.ts` renders the scope into the outbound system
+  prompt and bans write/manage tools.
+- See `docs/weknora-fusion-plan.md` for the fusion blueprint. The follow-on
+  direction (identity = WeKnora account, single sign-on via a trimmed WeKnora
+  web frontend) is planned but not yet implemented; see the workspace planning
+  doc `EgoAI-WeKnora-统一产品协同规划.md` at the repo's parent level.
 
 ## Versioning
 

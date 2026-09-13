@@ -1,78 +1,9 @@
-import { app } from 'electron';
+const GITHUB_REPO = 'LeXiaoWen/EgoAI';
 
-import type { SqliteStore } from '../sqliteStore';
-import { resolveDevelopmentServerBaseUrl } from './developmentServerBaseUrl';
-
-let cachedTestMode: boolean | null = null;
-let loggedDevelopmentServerBaseUrl: string | null = null;
-
-/**
- * Read testMode from store and cache it.
- * Call once at startup and again whenever app_config changes.
- */
-export function refreshEndpointsTestMode(store: SqliteStore): void {
-  const appConfig = store.get<any>('app_config');
-  cachedTestMode = appConfig?.app?.testMode === true;
-}
-
-/**
- * Whether the app is in test mode.
- * Uses cached value after init; falls back to !app.isPackaged before init.
- */
-export const isTestModeEnabled = (): boolean => {
-  return cachedTestMode ?? !app.isPackaged;
-};
-
-/**
- * Server API base URL — switches based on testMode.
- * Used for auth exchange/refresh, models, proxy, etc.
- */
-export const getServerApiBaseUrl = (): string => {
-  const defaultBaseUrl = isTestModeEnabled()
-    ? 'https://lobsterai-server.inner.youdao.com'
-    : 'https://lobsterai-server.youdao.com';
-  const serverBaseUrl = resolveDevelopmentServerBaseUrl({
-    defaultBaseUrl,
-    developmentOverride: process.env.EGOAI_SERVER_BASE_URL,
-    isDev: process.env.NODE_ENV === 'development',
-    isPackaged: app.isPackaged,
-  });
-  if (serverBaseUrl !== defaultBaseUrl
-      && loggedDevelopmentServerBaseUrl !== serverBaseUrl) {
-    console.warn(
-      `[Endpoints] routing all Ego server traffic to development origin ${serverBaseUrl}`,
-    );
-    loggedDevelopmentServerBaseUrl = serverBaseUrl;
-  }
-  return serverBaseUrl;
-};
-
-export const getUpdateCheckUrl = (): string => (
-  isTestModeEnabled()
-    ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/update'
-    : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/update'
-);
-
-export const getManualUpdateCheckUrl = (): string => (
-  isTestModeEnabled()
-    ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/update-manual'
-    : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/update-manual'
+export const getGitHubReleaseApiUrl = (): string => (
+  `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
 );
 
 export const getFallbackDownloadUrl = (): string => (
-  isTestModeEnabled()
-    ? 'https://lobsterai.inner.youdao.com/#/download-list'
-    : 'https://lobsterai.youdao.com/#/download-list'
-);
-
-export const getSkillStoreUrl = (): string => (
-  isTestModeEnabled()
-    ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/skill-store'
-    : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/skill-store'
-);
-
-export const getKitStoreUrl = (): string => (
-  isTestModeEnabled()
-    ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/kit-store'
-    : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/kit-store'
+  `https://github.com/${GITHUB_REPO}/releases`
 );

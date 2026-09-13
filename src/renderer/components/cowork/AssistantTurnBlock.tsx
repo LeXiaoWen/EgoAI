@@ -218,7 +218,7 @@ const getSystemMessageDisplayContent = (message: CoworkMessage, content: string)
 const buildErrorModelSourceLabel = (detail: CoworkErrorDetail): string | null => {
   if (!detail.modelSource) return null;
   if (detail.modelSource === CoworkErrorModelSource.EgoAIPlan) {
-    return i18nService.t('coworkErrorModelSourceLobsterAIPlan');
+    return i18nService.t('coworkErrorModelSourceEgoAIPlan');
   }
 
   const qualifiers: string[] = [];

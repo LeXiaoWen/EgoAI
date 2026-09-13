@@ -3,7 +3,6 @@ import { app, BrowserWindow, session } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-import { LogReporterStoreKey } from '../../shared/analytics/constants';
 import {
   APP_UPDATE_FILE_INVALID_ERROR,
   APP_UPDATE_URL_UNTRUSTED_ERROR,
@@ -32,35 +31,20 @@ import {
 } from './appUpdateUrlPolicy';
 import {
   getFallbackDownloadUrl,
-  getManualUpdateCheckUrl,
-  getUpdateCheckUrl,
+  getGitHubReleaseApiUrl,
 } from './endpoints';
-import { getKeyfromAttribution } from './keyfromAttribution';
 
-type ChangeLogLang = {
-  title?: string;
-  content?: string[];
+type GitHubReleaseAsset = {
+  name?: string;
+  browser_download_url?: string;
 };
 
-type PlatformDownload = {
-  url?: string;
-};
-
-type UpdateApiResponse = {
-  code?: number;
-  data?: {
-    value?: {
-      version?: string;
-      date?: string;
-      changeLog?: {
-        ch?: ChangeLogLang;
-        en?: ChangeLogLang;
-      };
-      macIntel?: PlatformDownload;
-      macArm?: PlatformDownload;
-      windowsX64?: PlatformDownload;
-    };
-  };
+type GitHubReleaseApiResponse = {
+  tag_name?: string;
+  name?: string | null;
+  published_at?: string;
+  body?: string | null;
+  assets?: GitHubReleaseAsset[];
 };
 
 function formatUpdateUrlForLog(rawUrl: string): string {
@@ -75,7 +59,6 @@ function formatUpdateUrlForLog(rawUrl: string): string {
   }
 }
 
-export const INSTALLATION_UUID_KEY = LogReporterStoreKey.InstallationUuid;
 const APP_UPDATE_TEST_CURRENT_VERSION_ENV = 'LOBSTERAI_UPDATE_CURRENT_VERSION';
 export const APP_UPDATE_READY_FILE_KEY_PREFIX = 'app_update_ready_file';
 
@@ -184,7 +167,7 @@ export class AppUpdateCoordinator {
 
     try {
       const currentVersion = this.resolveCurrentVersion();
-      const info = await this.fetchUpdateInfo(currentVersion, options?.manual === true, options?.userId);
+      const info = await this.fetchUpdateInfo(currentVersion);
       if (!this.isFlowActive(flowId, targetSource)) {
         console.log(
           `[AppUpdate] ignoring stale check result after fetch, flowId=${flowId}, source=${targetSource}, activeFlowId=${this.activeFlowId}, activeSource=${this.activeFlowSource ?? 'none'}`,
@@ -604,32 +587,29 @@ export class AppUpdateCoordinator {
 
   private async fetchUpdateInfo(
     currentVersion: string,
-    manual: boolean,
-    userId?: string | null,
   ): Promise<AppUpdateInfo | null> {
-    const baseUrl = manual ? getManualUpdateCheckUrl() : getUpdateCheckUrl();
-    const qs = this.getUpdateQueryString(userId, currentVersion);
-    const url = qs ? `${baseUrl}?${qs}` : baseUrl;
+    const url = getGitHubReleaseApiUrl();
     console.log(`[AppUpdate] checking update, currentVersion=${currentVersion}, url=${url}`);
 
     const response = await session.defaultSession.fetch(url, {
       method: 'GET',
       headers: {
-        Accept: 'application/json',
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'EgoAI',
+        'X-GitHub-Api-Version': '2022-11-28',
       },
     });
 
+    if (response.status === 404) {
+      console.log('[AppUpdate] no GitHub release found (404)');
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`Update check failed (HTTP ${response.status})`);
     }
 
-    const payload = (await response.json()) as UpdateApiResponse;
-    if (payload.code !== 0) {
-      throw new Error(`Update check failed with code ${payload.code ?? 'unknown'}`);
-    }
-
-    const value = payload.data?.value;
-    const latestVersion = value?.version?.trim();
+    const release = (await response.json()) as GitHubReleaseApiResponse;
+    const latestVersion = release.tag_name?.replace(/^v/, '').trim();
     if (!latestVersion || !this.isNewerVersion(latestVersion, currentVersion)) {
       console.log(
         `[AppUpdate] no update available, latestVersion=${latestVersion || 'N/A'}, currentVersion=${currentVersion}`,
@@ -637,19 +617,15 @@ export class AppUpdateCoordinator {
       return null;
     }
 
-    const toEntry = (log?: ChangeLogLang) => ({
-      title: typeof log?.title === 'string' ? log.title : '',
-      content: Array.isArray(log?.content) ? log.content : [],
-    });
+    const title = (release.name ?? latestVersion).trim();
+    const body = release.body?.trim() ?? '';
+    const changeLog = { title, content: body ? [body] : [] };
 
     const result: AppUpdateInfo = {
       latestVersion,
-      date: value?.date?.trim() || '',
-      changeLog: {
-        zh: toEntry(value?.changeLog?.ch),
-        en: toEntry(value?.changeLog?.en),
-      },
-      url: this.getPlatformDownloadUrl(value),
+      date: release.published_at ?? '',
+      changeLog: { zh: changeLog, en: changeLog },
+      url: this.getPlatformDownloadUrl(release),
     };
     console.log(
       `[AppUpdate] update available: ${currentVersion} -> ${latestVersion}, downloadUrl=${formatUpdateUrlForLog(result.url)}`,
@@ -657,16 +633,21 @@ export class AppUpdateCoordinator {
     return result;
   }
 
-  private getPlatformDownloadUrl(
-    value: NonNullable<NonNullable<UpdateApiResponse['data']>['value']> | undefined,
-  ): string {
+  private getPlatformDownloadUrl(release: GitHubReleaseApiResponse): string {
+    const assets = (release.assets ?? [])
+      .map((asset) => asset.browser_download_url)
+      .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+
     if (process.platform === 'darwin') {
-      const download = process.arch === 'arm64' ? value?.macArm : value?.macIntel;
-      return download?.url?.trim() || getFallbackDownloadUrl();
+      const dmgAssets = assets.filter((url) => /\.dmg$/i.test(url));
+      const candidate = process.arch === 'arm64'
+        ? dmgAssets.find((url) => /(arm64|aarch64)/i.test(url))
+        : dmgAssets.find((url) => !/(arm64|aarch64)/i.test(url));
+      return candidate || getFallbackDownloadUrl();
     }
 
     if (process.platform === 'win32') {
-      const candidate = value?.windowsX64?.url?.trim();
+      const candidate = assets.find((url) => /\.exe$/i.test(url));
       if (!candidate) {
         return getFallbackDownloadUrl();
       }
@@ -721,39 +702,6 @@ export class AppUpdateCoordinator {
     }
 
     return app.getVersion();
-  }
-
-  private getUpdateQueryString(userId?: string | null, version?: string): string {
-    const params = new URLSearchParams();
-    const installationId = this.getOrCreateInstallationId();
-    if (installationId) {
-      params.append('uuid', installationId);
-    }
-    if (userId) {
-      params.append('userId', userId);
-    }
-    if (version) {
-      params.append('version', version);
-    }
-    const { firstKeyfrom, latestKeyfrom } = getKeyfromAttribution(this.store);
-    params.set('firstKeyfrom', firstKeyfrom);
-    params.set('latestKeyfrom', latestKeyfrom);
-    return params.toString();
-  }
-
-  private getOrCreateInstallationId(): string | null {
-    try {
-      const existing = this.store.get<string>(INSTALLATION_UUID_KEY);
-      if (typeof existing === 'string' && existing.trim()) {
-        return existing;
-      }
-      const nextId = crypto.randomUUID();
-      this.store.set(INSTALLATION_UUID_KEY, nextId);
-      return nextId;
-    } catch (error) {
-      console.warn('[AppUpdate] failed to get installation uuid:', error);
-      return null;
-    }
   }
 
   private isNewerVersion(latestVersion: string, currentVersion: string): boolean {

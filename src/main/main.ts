@@ -167,7 +167,7 @@ import {
   OpenClawRuntimeAdapter,
   type PermissionResult,
 } from './libs/agentEngine';
-import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
+import { AppUpdateCoordinator } from './libs/appUpdateCoordinator';
 import type { BrowserAnnotationAssetIdentity, SaveBrowserAnnotationAssetInput } from './libs/browserAnnotationAssetStore';
 import { BrowserAnnotationAssetStore } from './libs/browserAnnotationAssetStore';
 import {
@@ -207,11 +207,6 @@ import {
   performPendingDataMigrationRestoreSync,
 } from './libs/dataMigration/dataMigrationService';
 import { DesktopNotificationManager } from './libs/desktopNotificationManager';
-import {
-  getKitStoreUrl,
-  getSkillStoreUrl,
-  refreshEndpointsTestMode,
-} from './libs/endpoints';
 import {
   createOfficePreviewSession,
   createPreviewSession,
@@ -282,7 +277,7 @@ import {
 import { collectReferencedEnvVarNames, pickReferencedSecretEnvVars } from './libs/openclawSecretEnv';
 import { migrateMainAgentWorkspace } from './libs/openclawWorkspaceMigration';
 import { ensurePythonRuntimeReady } from './libs/pythonRuntime';
-import { isAnalyticsEndpointUrl, sanitizeUrlForLog, serializeForLog } from './libs/sanitizeForLog';
+import { sanitizeUrlForLog, serializeForLog } from './libs/sanitizeForLog';
 import { SqliteBackupTrigger } from './libs/sqliteBackup/constants';
 import { SqliteBackupManager } from './libs/sqliteBackup/sqliteBackupManager';
 import {
@@ -2830,7 +2825,6 @@ if (!gotTheLock) {
       const browserWebAccessChanged = hasBrowserWebAccessConfigChanged(previousAppConfig, nextAppConfig);
       const systemProxyChanged = getUseSystemProxyFromConfig(previousAppConfig) !==
         getUseSystemProxyFromConfig(nextAppConfig);
-      refreshEndpointsTestMode(getStore());
       const impactDecision = classifyAppConfigChange(previousAppConfig, value);
       const proxyChanged = impactDecision.reasons.includes(OpenClawConfigImpactReason.AppUseSystemProxy);
       const actionDecision = removeImpactDecisionReasons(impactDecision, [
@@ -3082,14 +3076,12 @@ if (!gotTheLock) {
   // Skills IPC handlers
   registerSkillHandlers({
     getSkillManager,
-    getSkillStoreUrl,
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
   });
 
   // Kits IPC handlers
   registerKitHandlers({
     getStore,
-    getKitStoreUrl,
     getSkillManager,
     syncOpenClawConfig,
   });
@@ -6249,14 +6241,9 @@ if (!gotTheLock) {
       },
     ) => {
       const sanitizedUrl = sanitizeUrlForLog(options.url);
-      // Analytics beacons are traced by the reporter itself ([LogReporter]
-      // lines); logging them here again would only add noise.
-      const logTraffic = !isAnalyticsEndpointUrl(options.url);
-      if (logTraffic) {
-        console.log(
-          `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, body: ${options.body}`,
-        );
-      }
+      console.log(
+        `[api:fetch] ${options.method} ${sanitizedUrl}, headers: ${serializeForLog(options.headers)}, body: ${options.body}`,
+      );
 
       const doFetch = async (headers: Record<string, string>) => {
         const response = await session.defaultSession.fetch(options.url, {
@@ -6287,12 +6274,10 @@ if (!gotTheLock) {
 
       try {
         let result = await doFetch(options.headers);
-        if (logTraffic) {
-          console.log(
-            `[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}`,
-            typeof result.data === 'object' ? JSON.stringify(result.data) : result.data,
-          );
-        }
+        console.log(
+          `[api:fetch] ${options.method} ${sanitizedUrl} -> ${result.status} ${result.statusText}`,
+          typeof result.data === 'object' ? JSON.stringify(result.data) : result.data,
+        );
 
         return result;
       } catch (error) {
@@ -7179,7 +7164,6 @@ if (!gotTheLock) {
     }
 
     initializeKeyfromAttribution(store);
-    refreshEndpointsTestMode(store);
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));
 
     const startSqliteBackupLoop = async (): Promise<void> => {

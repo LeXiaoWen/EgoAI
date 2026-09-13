@@ -91,7 +91,6 @@ contextBridge.exposeInMainWorld('electron', {
     getConfig: (skillId: string) => ipcRenderer.invoke('skills:getConfig', skillId),
     setConfig: (skillId: string, config: Record<string, string>) =>
       ipcRenderer.invoke('skills:setConfig', skillId, config),
-    fetchMarketplace: () => ipcRenderer.invoke('skills:fetchMarketplace'),
     detectFromOpenClaw: () => ipcRenderer.invoke('skills:detectFromOpenClaw'),
     syncFromOpenClaw: () => ipcRenderer.invoke('skills:syncFromOpenClaw'),
     refreshPluginSkillIds: () => ipcRenderer.invoke('skills:refreshPluginSkillIds'),
@@ -113,7 +112,6 @@ contextBridge.exposeInMainWorld('electron', {
     setEnabledByRegistryId: (options: { registryId: string; enabled: boolean }) =>
       ipcRenderer.invoke(McpIpcChannel.SetEnabledByRegistryId, options),
     retryLaunchResolution: (id: string) => ipcRenderer.invoke(McpIpcChannel.RetryLaunchResolution, id),
-    fetchMarketplace: () => ipcRenderer.invoke(McpIpcChannel.FetchMarketplace),
     onChanged: (callback: () => void) => {
       const handler = () => callback();
       ipcRenderer.on(McpIpcChannel.Changed, handler);

@@ -1,5 +1,5 @@
 import { BUNDLED_SKILL_DISPLAY_NAMES } from '../components/skills/bundledSkillNames';
-import { LocalizedText, LocalSkillInfo, MarketplaceSkill, MarketTag, Skill } from '../types/skill';
+import { LocalizedText, Skill } from '../types/skill';
 import { i18nService } from './i18n';
 
 export function resolveLocalizedText(text: string | LocalizedText): string {
@@ -52,15 +52,8 @@ export function compareVersions(a: string, b: string): number {
 class SkillService {
   private skills: Skill[] = [];
   private initialized = false;
-  private localSkillDescriptions: Map<string, string | LocalizedText> = new Map();
-  private marketplaceSkillDescriptions: Map<string, string | LocalizedText> = new Map();
   private installedKitSkillDescriptions: Map<string, string | LocalizedText> = new Map();
-  private localSkillNames: Map<string, string | LocalizedText> = new Map();
-  private marketplaceSkillNames: Map<string, string | LocalizedText> = new Map();
   private installedKitSkillNames: Map<string, string | LocalizedText> = new Map();
-  private skillIcons: Map<string, string> = new Map();
-  private marketplaceCache: { skills: MarketplaceSkill[]; tags: MarketTag[] } | null = null;
-  private marketplaceFetchPromise: Promise<{ skills: MarketplaceSkill[]; tags: MarketTag[] }> | null = null;
 
   async init(): Promise<void> {
     if (this.initialized) return;
@@ -232,67 +225,7 @@ class SkillService {
     }
   }
   hasLocalizedSkillDescriptions(): boolean {
-    return this.localSkillDescriptions.size > 0
-      || this.marketplaceSkillDescriptions.size > 0
-      || this.installedKitSkillDescriptions.size > 0;
-  }
-
-  async fetchMarketplaceSkills(): Promise<{ skills: MarketplaceSkill[]; tags: MarketTag[] }> {
-    if (this.marketplaceCache) {
-      return this.marketplaceCache;
-    }
-    if (this.marketplaceFetchPromise) {
-      return this.marketplaceFetchPromise;
-    }
-
-    this.marketplaceFetchPromise = this.loadMarketplaceSkills();
-    const result = await this.marketplaceFetchPromise;
-    this.marketplaceFetchPromise = null;
-    return result;
-  }
-
-  private async loadMarketplaceSkills(): Promise<{ skills: MarketplaceSkill[]; tags: MarketTag[] }> {
-    try {
-      const result = await window.electron.skills.fetchMarketplace();
-      if (!result.success || !result.data) {
-        throw new Error(result.error || 'Failed to fetch');
-      }
-      const json = JSON.parse(result.data);
-      const value = json?.data?.value;
-      // Store local skill descriptions for i18n lookup
-      const localSkills: LocalSkillInfo[] = Array.isArray(value?.localSkill) ? value.localSkill : [];
-      this.localSkillDescriptions.clear();
-      this.localSkillNames.clear();
-      this.skillIcons.clear();
-      for (const ls of localSkills) {
-        this.localSkillDescriptions.set(ls.name, ls.description);
-        this.localSkillDescriptions.set(ls.id, ls.description);
-        if (ls.displayName != null) {
-          this.localSkillNames.set(ls.name, ls.displayName);
-          this.localSkillNames.set(ls.id, ls.displayName);
-        }
-        if (ls.icon) this.skillIcons.set(ls.id, ls.icon);
-      }
-      const skills: MarketplaceSkill[] = Array.isArray(value?.marketplace) ? value.marketplace : [];
-      const tags: MarketTag[] = Array.isArray(value?.marketTags) ? value.marketTags : [];
-      // Also store marketplace skill descriptions for i18n lookup (keyed by id)
-      this.marketplaceSkillDescriptions.clear();
-      this.marketplaceSkillNames.clear();
-      for (const ms of skills) {
-        if (typeof ms.description === 'object') {
-          this.marketplaceSkillDescriptions.set(ms.id, ms.description);
-        }
-        if (ms.displayName != null) {
-          this.marketplaceSkillNames.set(ms.id, ms.displayName);
-        }
-        if (ms.icon) this.skillIcons.set(ms.id, ms.icon);
-      }
-      this.marketplaceCache = { skills, tags };
-      return this.marketplaceCache;
-    } catch (error) {
-      console.error('Failed to fetch marketplace skills:', error);
-      return { skills: [], tags: [] };
-    }
+    return this.installedKitSkillDescriptions.size > 0;
   }
 
   private async loadInstalledKitSkillDescriptions(): Promise<void> {
@@ -323,10 +256,7 @@ class SkillService {
    * prettified raw name (`canvas-design` → `Canvas Design`).
    */
   getLocalizedSkillName(skillId: string, skillName: string): string {
-    const serverName = this.localSkillNames.get(skillName)
-      ?? this.localSkillNames.get(skillId)
-      ?? this.marketplaceSkillNames.get(skillId)
-      ?? this.installedKitSkillNames.get(skillId);
+    const serverName = this.installedKitSkillNames.get(skillId);
     if (serverName != null) return resolveLocalizedText(serverName);
 
     const bundled = BUNDLED_SKILL_DISPLAY_NAMES[skillId];
@@ -336,15 +266,11 @@ class SkillService {
   }
 
   /** Server-provided icon URL, if any. Callers fall back to a generated tile. */
-  getSkillIcon(skillId: string): string | undefined {
-    return this.skillIcons.get(skillId);
+  getSkillIcon(_skillId: string): string | undefined {
+    return undefined;
   }
 
-  getLocalizedSkillDescription(skillId: string, skillName: string, fallback: string): string {
-    const localDesc = this.localSkillDescriptions.get(skillName) ?? this.localSkillDescriptions.get(skillId);
-    if (localDesc != null) return resolveLocalizedText(localDesc);
-    const marketDesc = this.marketplaceSkillDescriptions.get(skillId);
-    if (marketDesc != null) return resolveLocalizedText(marketDesc);
+  getLocalizedSkillDescription(skillId: string, _skillName: string, fallback: string): string {
     const kitDesc = this.installedKitSkillDescriptions.get(skillId);
     if (kitDesc != null) return resolveLocalizedText(kitDesc);
     return fallback;

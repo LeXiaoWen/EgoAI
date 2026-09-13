@@ -35,7 +35,7 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [maxListHeight, setMaxListHeight] = useState(256); // default max-h-64 = 256px
-  const [i18nReady, setI18nReady] = useState(() => skillService.hasLocalizedSkillDescriptions());
+  const i18nReady = skillService.hasLocalizedSkillDescriptions();
   const popoverRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const skills = useSelector((state: RootState) => state.skill.skills);
@@ -60,18 +60,6 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
     .filter(s => s.isBuiltIn)
     .filter(matchesQuery);
   const filteredSkills = [...myFilteredSkills, ...builtInFilteredSkills];
-
-  // Load localized skill descriptions from marketplace/localSkill metadata.
-  useEffect(() => {
-    if (!isOpen) return;
-    if (skillService.hasLocalizedSkillDescriptions()) {
-      setI18nReady(true);
-      return;
-    }
-    skillService.fetchMarketplaceSkills()
-      .then(() => setI18nReady(true))
-      .catch(() => setI18nReady(true));
-  }, [isOpen]);
 
   // Calculate available height and focus search input when popover opens
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { CheckIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { i18nService } from '../../services/i18n';
@@ -16,19 +16,8 @@ interface AgentSkillSelectorProps {
 const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillIds, onChange }) => {
   const skills = useSelector((state: RootState) => state.skill.skills);
   const [search, setSearch] = useState('');
-  const [i18nReady, setI18nReady] = useState(() => skillService.hasLocalizedSkillDescriptions());
+  const i18nReady = skillService.hasLocalizedSkillDescriptions();
   const shouldUseFallbackDescription = i18nReady || i18nService.getLanguage() !== 'zh';
-
-  // Load localized skill descriptions from marketplace API
-  useEffect(() => {
-    if (skillService.hasLocalizedSkillDescriptions()) {
-      setI18nReady(true);
-      return;
-    }
-    skillService.fetchMarketplaceSkills()
-      .then(() => setI18nReady(true))
-      .catch(() => setI18nReady(true));
-  }, []);
 
   const enabledSkills = useMemo(
     () => skills.filter((s) => s.enabled),
