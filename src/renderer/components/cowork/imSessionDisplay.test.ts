@@ -12,7 +12,7 @@ describe('getIMSessionDisplayTitle', () => {
       title: 'group:o9cq',
       strippedPrefix: true,
     });
-    expect(getIMSessionDisplayTitle('[微信] group:o9cq', 'feishu')).toEqual({
+    expect(getIMSessionDisplayTitle('[微信] group:o9cq', 'qq')).toEqual({
       title: '[微信] group:o9cq',
       strippedPrefix: false,
     });
@@ -38,15 +38,24 @@ describe('getIMSessionDisplayTitle', () => {
 
   test('uses the shared platform registry logos', () => {
     expect(getIMSessionPlatformLogo('weixin')).toBe('weixin.png');
-    expect(getIMSessionPlatformLogo('discord')).toBe('discord.svg');
+    expect(getIMSessionPlatformLogo('wecom')).toBe('wecom.png');
   });
 
   test('applies session-list visual size tuning for uneven source assets', () => {
     expect(getIMSessionPlatformIconClassName('weixin')).toBe('h-4 w-4 rounded-sm object-contain scale-90');
-    expect(getIMSessionPlatformIconClassName('dingtalk')).toBe('h-4 w-4 rounded-sm object-contain scale-110');
-    expect(getIMSessionPlatformIconClassName('feishu')).toBe('h-4 w-4 rounded-sm object-contain scale-[1.15]');
     expect(getIMSessionPlatformIconClassName('wecom')).toBe('h-4 w-4 rounded-sm object-contain scale-110');
     expect(getIMSessionPlatformIconClassName('qq')).toBe('h-4 w-4 rounded-sm object-contain');
+  });
+
+  test('rejects channels EgoAI does not ship', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      for (const removed of ['dingtalk', 'feishu', 'telegram', 'discord']) {
+        expect(getIMSessionPlatformLogo(removed)).toBeNull();
+      }
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test('ignores and logs unknown platforms without throwing', () => {

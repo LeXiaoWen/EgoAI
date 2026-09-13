@@ -25,11 +25,12 @@ interface PlatformDefInput {
 
 // ═══════════════════════════════════════════════════════
 // 2. Platform Definitions — the single source of truth
-//    Array order = Chinese UI display order (CHINA first, then GLOBAL).
+//    Array order = UI display order.
+//    EgoAI ships only the four channels below; the region grouping is kept
+//    because callers still filter on it.
 // ═══════════════════════════════════════════════════════
 
 const DEFINITIONS = [
-  // ── China ──
   {
     id: 'weixin',
     label: 'WeChat',
@@ -37,22 +38,6 @@ const DEFINITIONS = [
     channel: 'openclaw-weixin',
     channelAliases: [],
     logo: 'weixin.png',
-  },
-  {
-    id: 'dingtalk',
-    label: 'DingTalk',
-    region: 'china',
-    channel: 'dingtalk-connector',
-    channelAliases: ['dingtalk'],
-    logo: 'dingding.png',
-  },
-  {
-    id: 'feishu',
-    label: 'Feishu',
-    region: 'china',
-    channel: 'feishu',
-    channelAliases: [],
-    logo: 'feishu.png',
   },
   {
     id: 'wecom',
@@ -69,23 +54,6 @@ const DEFINITIONS = [
     channel: 'qqbot',
     channelAliases: [],
     logo: 'qq_bot.jpeg',
-  },
-  // ── Global ──
-  {
-    id: 'telegram',
-    label: 'Telegram',
-    region: 'global',
-    channel: 'telegram',
-    channelAliases: [],
-    logo: 'telegram.svg',
-  },
-  {
-    id: 'discord',
-    label: 'Discord',
-    region: 'global',
-    channel: 'discord',
-    channelAliases: [],
-    logo: 'discord.svg',
   },
   {
     id: 'email',
@@ -206,7 +174,7 @@ class PlatformRegistryImpl {
 
   // ── UI Helpers ──
 
-  /** Channel options for scheduled task delivery target dropdown. */
+  /** Channel options as `{ value, label }`, for channel pickers. */
   channelOptions(): readonly { value: ChannelName; label: string }[] {
     return this.defs.map(d => ({ value: d.channel, label: d.label }));
   }

@@ -13,19 +13,13 @@ const DEFAULT_ICON_CLASS_NAME = 'h-4 w-4 rounded-sm object-contain';
 
 const IM_TITLE_PREFIXES: Record<Platform, readonly string[]> = {
   weixin: ['[微信]', '[WeChat]'],
-  dingtalk: ['[钉钉]', '[DingTalk]'],
-  feishu: ['[飞书]', '[Feishu]'],
   wecom: ['[企微]', '[企业微信]', '[WeCom]'],
   qq: ['[QQ]'],
-  telegram: ['[TG]', '[Telegram]'],
-  discord: ['[Discord]'],
   email: ['[龙虾邮箱]', '[clawEmail]', '[邮件]', '[Email]'],
 };
 
 const IM_SESSION_ICON_SCALE_CLASS_NAMES: Partial<Record<Platform, string>> = {
   weixin: 'scale-90',
-  dingtalk: 'scale-110',
-  feishu: 'scale-[1.15]',
   wecom: 'scale-110',
 };
 
