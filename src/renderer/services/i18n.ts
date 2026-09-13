@@ -2886,8 +2886,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     welcomeLoginFailed: '登录发起失败，请重试',
     copy: '复制',
 
-    'settings.enterprise.managed': '由企业统一管理',
-
     // TaskForm unsaved changes confirmation
     taskFormUnsavedChanges: '有未保存的修改',
     taskFormLeaveConfirm: '离开后修改将丢失，确认离开吗？',
@@ -6065,8 +6063,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     welcomeLoginWaiting: 'Complete the sign-in in your browser',
     welcomeLoginFailed: 'Could not start sign-in. Please try again.',
     copy: 'Copy',
-
-    'settings.enterprise.managed': 'Managed by enterprise',
 
     // TaskForm unsaved changes confirmation
     taskFormUnsavedChanges: 'Unsaved Changes',

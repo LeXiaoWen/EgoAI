@@ -1335,7 +1335,6 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       engineManager: getOpenClawEngineManager(),
       getCoworkConfig: () => getCoworkStore().getConfig(),
       getBrowserWebAccessConfig: () => getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
-      isEnterprise: () => !!getStore().get('enterprise_config'),
       getOpenClawSessionPolicy: () => loadOpenClawSessionPolicyConfig(getStore()),
       getSkillsList: () =>
         getSkillManager()
@@ -2873,17 +2872,6 @@ if (!gotTheLock) {
     getStore().delete(key);
   });
 
-  ipcMain.handle('enterprise:getConfig', () => {
-    try {
-      return {
-        success: true as const,
-        config: getStore().get('enterprise_config') ?? null,
-      };
-    } catch (error) {
-      console.error('[Enterprise] failed to read enterprise UI config:', error);
-      throw error;
-    }
-  });
 
   // Network status change handler
   // Remove any existing listener first to avoid duplicate registrations

@@ -83,9 +83,7 @@ export type AskUserCallbackConfig = {
 
 const mapExecutionModeToSandboxMode = (
   mode: CoworkExecutionMode,
-  isEnterprise: boolean,
 ): 'off' | 'non-main' | 'all' => {
-  if (!isEnterprise) return 'off';
   switch (mode) {
     case 'sandbox':
       return 'all';
@@ -1700,7 +1698,6 @@ type OpenClawConfigSyncDeps = {
   engineManager: OpenClawEngineManager;
   getCoworkConfig: () => CoworkConfig;
   getBrowserWebAccessConfig?: () => Partial<BrowserWebAccessConfig> | null | undefined;
-  isEnterprise: () => boolean;
   getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
   getResolvedMcpServers?: () => ResolvedMcpServer[];
   getAskUserCallbackUrl?: () => string | null;
@@ -1716,7 +1713,6 @@ export class OpenClawConfigSync {
   private readonly engineManager: OpenClawEngineManager;
   private readonly getCoworkConfig: () => CoworkConfig;
   private readonly getBrowserWebAccessConfig: () => Partial<BrowserWebAccessConfig> | null | undefined;
-  private readonly isEnterprise: () => boolean;
   private readonly getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
   private readonly getResolvedMcpServers?: () => ResolvedMcpServer[];
   private readonly getAskUserCallbackUrl?: () => string | null;
@@ -1731,7 +1727,6 @@ export class OpenClawConfigSync {
     this.engineManager = deps.engineManager;
     this.getCoworkConfig = deps.getCoworkConfig;
     this.getBrowserWebAccessConfig = deps.getBrowserWebAccessConfig ?? (() => null);
-    this.isEnterprise = deps.isEnterprise;
     this.getOpenClawSessionPolicy = deps.getOpenClawSessionPolicy;
     this.getResolvedMcpServers = deps.getResolvedMcpServers;
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
@@ -1854,27 +1849,17 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const apiResolution = resolveRawApiConfig();
 
     if (!apiResolution.config) {
-      // Enterprise mode: proceed with full config generation even without a
-      // resolved API model. The enterprise openclaw.json merge (called after
-      // sync) will supply providers and the primary model. Writing only the
-      // minimal config would lose sandbox settings, plugins, AGENTS.md, etc.
-      if (this.isEnterprise()) {
-        console.log(
-          '[OpenClawConfigSync] enterprise mode: no API config resolved, generating full config with empty providers (enterprise merge will supply them)',
-        );
-      } else {
-        // No API/model configured yet (fresh install).
-        // Write a minimal config so the gateway can start — it just won't have
-        // any model provider until the user configures one.
-        const result = this.writeMinimalConfig(configPath, reason);
-        // Still sync AGENTS.md even when API is not configured — skills/systemPrompt
-        // may already be set and should be available when the user configures a model.
-        const mainWorkspacePath = getMainAgentWorkspacePath(this.engineManager.getStateDir());
-        const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig);
-        this.syncPerAgentWorkspaces(mainWorkspacePath, coworkConfig);
-        if (agentsMdWarning) result.agentsMdWarning = agentsMdWarning;
-        return result;
-      }
+      // No API/model configured yet (fresh install).
+      // Write a minimal config so the gateway can start — it just won't have
+      // any model provider until the user configures one.
+      const result = this.writeMinimalConfig(configPath, reason);
+      // Still sync AGENTS.md even when API is not configured — skills/systemPrompt
+      // may already be set and should be available when the user configures a model.
+      const mainWorkspacePath = getMainAgentWorkspacePath(this.engineManager.getStateDir());
+      const agentsMdWarning = this.syncAgentsMd(mainWorkspacePath, coworkConfig);
+      this.syncPerAgentWorkspaces(mainWorkspacePath, coworkConfig);
+      if (agentsMdWarning) result.agentsMdWarning = agentsMdWarning;
+      return result;
     }
 
     let allProvidersMap: Record<string, OpenClawProviderSelection['providerConfig']> = {};
@@ -2109,16 +2094,13 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const hasModelCompatConfig = Object.keys(finalizedCompatibility.modelProfiles).length > 0
       || Object.keys(finalizedThinkingProfiles).length > 0;
 
-    const sandboxMode = mapExecutionModeToSandboxMode(
-      coworkConfig.executionMode || 'local',
-      this.isEnterprise(),
-    );
+    const sandboxMode = mapExecutionModeToSandboxMode(coworkConfig.executionMode || 'local');
     const availableProviders = buildProviderModelCatalog(allProvidersMap);
     const agentModelDefaults = Object.keys(perModelCustomDefaults).length > 0
       ? buildCompleteAgentModelDefaults(allProvidersMap, perModelCustomDefaults)
       : {};
     console.log(
-      `[OpenClawConfigSync] sandbox mode: ${sandboxMode} (executionMode: ${coworkConfig.executionMode || 'local'}, enterprise: ${this.isEnterprise()})`,
+      `[OpenClawConfigSync] sandbox mode: ${sandboxMode} (executionMode: ${coworkConfig.executionMode || 'local'})`,
     );
 
     const mainWorkspacePath = getMainAgentWorkspacePath(this.engineManager.getStateDir());

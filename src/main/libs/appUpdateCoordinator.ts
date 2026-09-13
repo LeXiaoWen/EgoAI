@@ -149,12 +149,6 @@ export class AppUpdateCoordinator {
     console.log(
       `[AppUpdate] checkNow started, manual=${options?.manual === true}, status=${this.state.status}, source=${this.state.source ?? 'none'}, readyFilePath=${this.state.readyFilePath ?? 'none'}`,
     );
-    if (this.isUpdateDisabled()) {
-      console.log('[AppUpdate] updates are disabled by enterprise config');
-      const state = this.resetToIdle();
-      return { success: true, state, updateFound: false };
-    }
-
     if (options?.manual === true && this.state.source === AppUpdateSource.Auto) {
       if (this.state.status === AppUpdateStatus.Downloading) {
         console.log('[AppUpdate] manual check is preempting active auto download');
@@ -464,9 +458,7 @@ export class AppUpdateCoordinator {
     }
 
     try {
-      await installUpdate(filePath, {
-        noDefenderExclusion: this.isDefenderExclusionDisabled(),
-      });
+      await installUpdate(filePath);
       return { success: true, state: this.getState() };
     } catch (error) {
       console.error('[AppUpdate] install failed:', error);
@@ -501,19 +493,6 @@ export class AppUpdateCoordinator {
       return { success: false, state, error: message };
     }
   }
-
-  private resetToIdle(): AppUpdateRuntimeState {
-    const previousReadyFilePath = this.state.readyFilePath;
-    const previousSource = this.state.source;
-    const state = this.setState(initialState());
-    if (previousReadyFilePath) {
-      void this.cleanupReadyFile(previousReadyFilePath);
-    }
-    this.clearStoredReadyFile(previousSource);
-    this.readyWindowsInstallerTrust = null;
-    return state;
-  }
-
   private async startDownload(
     info: AppUpdateInfo,
     flowId: number,
@@ -730,16 +709,6 @@ export class AppUpdateCoordinator {
       return validateWindowsInstallerUrl(url).trusted;
     }
     return false;
-  }
-
-  private isUpdateDisabled(): boolean {
-    const enterprise = this.store.get<{ disableUpdate?: boolean }>('enterprise_config');
-    return enterprise?.disableUpdate === true;
-  }
-
-  private isDefenderExclusionDisabled(): boolean {
-    const enterprise = this.store.get<{ disableDefenderExclusion?: boolean }>('enterprise_config');
-    return enterprise?.disableDefenderExclusion === true;
   }
 
   private resolveCurrentVersion(): string {
