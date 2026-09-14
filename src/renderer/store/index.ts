@@ -4,6 +4,7 @@ import { libraryArtifactListener } from './libraryArtifactListener';
 import agentReducer from './slices/agentSlice';
 import artifactReducer from './slices/artifactSlice';
 import coworkReducer from './slices/coworkSlice';
+import imReducer from './slices/imSlice';
 import kitReducer from './slices/kitSlice';
 import mcpReducer from './slices/mcpSlice';
 import modelReducer from './slices/modelSlice';
@@ -20,6 +21,7 @@ export const store = configureStore({
     agent: agentReducer,
     artifact: artifactReducer,
     kit: kitReducer,
+    im: imReducer,
   },
   middleware: getDefaultMiddleware => (
     getDefaultMiddleware().prepend(libraryArtifactListener.middleware)
