@@ -365,8 +365,19 @@ interface McpServerConfigIPC {
 }
 
 import type { AgentLegacyIdentityCleanupResult } from '@shared/agent';
+import type { Platform } from '@shared/platform';
 
 import type { Agent, PresetAgent } from './agent';
+import type {
+  EmailInstanceConfig,
+  IMConnectivityTestResult,
+  IMGatewayConfig,
+  IMGatewayStatus,
+  IMMessage,
+  PairingListResult,
+  QQInstanceConfig,
+  WecomInstanceConfig,
+} from './im';
 
 interface IElectronAPI {
   platform: string;
@@ -1143,6 +1154,98 @@ interface IElectronAPI {
     }>;
     fromRenderer: (level: string, tag: string, message: string) => void;
   };
+  im: {
+    // Configuration
+    getConfig: () => Promise<{ success: boolean; config?: IMGatewayConfig; error?: string }>;
+    setConfig: (
+      config: Partial<IMGatewayConfig>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => Promise<{ success: boolean; error?: string }>;
+    syncConfig: () => Promise<{ success: boolean; skipped?: boolean; error?: string }>;
+
+    // Gateway control
+    startGateway: (platform: Platform) => Promise<{ success: boolean; error?: string }>;
+    stopGateway: (platform: Platform) => Promise<{ success: boolean; error?: string }>;
+    testGateway: (
+      platform: Platform,
+      configOverride?: Partial<IMGatewayConfig>,
+    ) => Promise<{ success: boolean; result?: IMConnectivityTestResult; error?: string }>;
+
+    // Status
+    getStatus: () => Promise<{ success: boolean; status?: IMGatewayStatus; error?: string }>;
+    getLocalIp: () => Promise<string>;
+    getOpenClawConfigSchema: () => Promise<{
+      success: boolean;
+      result?: {
+        schema: Record<string, unknown>;
+        uiHints: Record<string, Record<string, unknown>>;
+      };
+      error?: string;
+    }>;
+
+    // Weixin QR login
+    weixinQrLoginStart: () => Promise<{
+      success: boolean;
+      qrDataUrl?: string;
+      message: string;
+      sessionKey?: string;
+    }>;
+    weixinQrLoginWait: (sessionKey?: string) => Promise<{
+      success: boolean;
+      connected: boolean;
+      message: string;
+      accountId?: string;
+      alreadyConnected?: boolean;
+    }>;
+
+    // Pairing
+    listPairingRequests: (platform: string) => Promise<PairingListResult>;
+    approvePairingCode: (
+      platform: string,
+      code: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+    rejectPairingRequest: (
+      platform: string,
+      code: string,
+    ) => Promise<{ success: boolean; error?: string }>;
+
+    // WeCom multi-instance
+    addWecomInstance: (
+      name: string,
+    ) => Promise<{ success: boolean; instance?: WecomInstanceConfig; error?: string }>;
+    deleteWecomInstance: (instanceId: string) => Promise<{ success: boolean; error?: string }>;
+    setWecomInstanceConfig: (
+      instanceId: string,
+      config: Partial<WecomInstanceConfig>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => Promise<{ success: boolean; error?: string }>;
+
+    // QQ multi-instance
+    addQQInstance: (
+      name: string,
+    ) => Promise<{ success: boolean; instance?: QQInstanceConfig; error?: string }>;
+    deleteQQInstance: (instanceId: string) => Promise<{ success: boolean; error?: string }>;
+    setQQInstanceConfig: (
+      instanceId: string,
+      config: Partial<QQInstanceConfig>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => Promise<{ success: boolean; error?: string }>;
+
+    // Email multi-instance
+    addEmailInstance: (
+      name: string,
+    ) => Promise<{ success: boolean; instance?: EmailInstanceConfig; error?: string }>;
+    deleteEmailInstance: (instanceId: string) => Promise<{ success: boolean; error?: string }>;
+    setEmailInstanceConfig: (
+      instanceId: string,
+      config: Partial<EmailInstanceConfig>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => Promise<{ success: boolean; error?: string }>;
+
+    // Event listeners
+    onStatusChange: (callback: (status: IMGatewayStatus) => void) => () => void;
+    onMessageReceived: (callback: (message: IMMessage) => void) => () => void;
+  };
   plugins: {
     list: () => Promise<{
       success: boolean;
@@ -1230,53 +1333,6 @@ interface IElectronAPI {
     send: (status: 'online' | 'offline') => void;
   };
   qwen: Record<string, never>;
-  feishu: {
-    install: {
-      qrcode: (isLark: boolean) => Promise<{
-        url: string;
-        deviceCode: string;
-        interval: number;
-        expireIn: number;
-      }>;
-      poll: (deviceCode: string) => Promise<{
-        done: boolean;
-        appId?: string;
-        appSecret?: string;
-        domain?: string;
-        error?: string;
-      }>;
-      verify: (
-        appId: string,
-        appSecret: string,
-      ) => Promise<{
-        success: boolean;
-        error?: string;
-      }>;
-    };
-  };
-  dingtalk: {
-    install: {
-      qrcode: () => Promise<{
-        url: string;
-        deviceCode: string;
-        interval: number;
-        expireIn: number;
-      }>;
-      poll: (deviceCode: string) => Promise<{
-        done: boolean;
-        clientId?: string;
-        clientSecret?: string;
-        error?: string;
-      }>;
-      verify: (
-        clientId: string,
-        clientSecret: string,
-      ) => Promise<{
-        success: boolean;
-        error?: string;
-      }>;
-    };
-  };
 }
 
 declare global {
