@@ -36,6 +36,7 @@ import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
 import { decryptSecret, decryptWithPassword, EncryptedPayload, encryptWithPassword, PasswordEncryptedPayload } from '../services/encryption';
 import { i18nService, LanguageType } from '../services/i18n';
+import { imService } from '../services/im';
 import { formatShortcutForDisplay, getShortcutConflictSignature, isTextEditingSafeShortcut, matchesShortcut } from '../services/shortcuts';
 import {
   type ThemeDefaultChangedDetail,
@@ -65,6 +66,7 @@ import EditIcon from './icons/EditIcon';
 import MessageCopyIcon from './icons/MessageCopyIcon';
 import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
+import IMSettings from './im/IMSettings';
 import PluginsSettings, { type PluginsSettingsHandle } from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
 import KnowledgeBaseConnectionSection from './settings/KnowledgeBaseConnectionSection';
@@ -2354,6 +2356,14 @@ const Settings: React.FC<SettingsProps> = ({
         }
       }
 
+      // Ask main to sync IM/OpenClaw config. The main process skips this when
+      // the IM fingerprint has not changed, so unrelated settings saves do not
+      // restart the gateway.
+      const syncSucceeded = await imService.saveAndSyncConfig();
+      if (!syncSucceeded) {
+        throw new Error(i18nService.t('settingsSavedButOpenClawSyncFailed'));
+      }
+
       // Batch save plugin changes (toggles + configs) if any pending
       if (activeTab === 'plugins' && pluginsSettingsRef.current) {
         const pendingChanges = pluginsSettingsRef.current.getPendingChanges();
@@ -4354,6 +4364,9 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
         );
+
+      case 'im':
+        return <IMSettings />;
 
       case 'plugins':
         return (

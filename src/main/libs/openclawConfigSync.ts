@@ -38,6 +38,13 @@ import {
 } from '../../shared/providers/egoAIRequestOptions';
 import type { ModelThinkingConfig } from '../../shared/providers/modelThinking';
 import type { Agent, CoworkConfig, CoworkExecutionMode } from '../coworkStore';
+import type {
+  EmailMultiInstanceConfig,
+  IMSettings,
+  QQInstanceConfig,
+  WecomInstanceConfig,
+  WeixinOpenClawConfig,
+} from '../im/types';
 import { OpenClawSessionKeepAlive } from '../openclawSessionPolicy/constants';
 import { buildOpenClawSessionConfig } from '../openclawSessionPolicy/store';
 import {
@@ -124,6 +131,22 @@ export const OPENCLAW_HEARTBEAT_EVERY_ENABLED = '1h';
 export const OPENCLAW_HEARTBEAT_EVERY_DISABLED = '0m';
 const OPENCLAW_MEMORY_CORE_PLUGIN_ID = 'memory-core';
 const OPENCLAW_MODEL_COMPAT_PLUGIN_ID = 'egoai-model-compat';
+
+/** Account-id wildcard used when an agent claims every account of a channel. */
+export const OPENCLAW_BINDING_ANY_ACCOUNT_ID = '*';
+
+/**
+ * Channel keys the four IM plugins register in `openclaw.json`. These are the
+ * plugin manifests' own `channels[]` entries, not plugin ids — the two differ
+ * for WeCom (`wecom` channel vs `wecom-openclaw-plugin` plugin).
+ */
+const WEIXIN_OPENCLAW_CHANNEL = 'openclaw-weixin';
+const QQBOT_OPENCLAW_CHANNEL = 'qqbot';
+const WECOM_OPENCLAW_CHANNEL = 'wecom';
+
+/** Manifest plugin ids, used for plugin-scoped config (entries, allowlist). */
+const EMAIL_PLUGIN_ID = 'email';
+const WECOM_PLUGIN_ID = 'wecom-openclaw-plugin';
 
 const asConfigRecord = (value: unknown): Record<string, unknown> | undefined => (
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -261,7 +284,7 @@ const MANAGED_OWNER_ALLOW_FROM = [
   // Prefixing with `webchat:` does not round-trip through owner resolution,
   // so owner-only tools like `cron` never become available.
   'gateway-client',
-  // Native IM channel senders use their platform user ID (e.g. telegram:xxx),
+  // Native IM channel senders use their platform user ID (e.g. qqbot:xxx),
   // which would not match 'gateway-client'. Use wildcard so all senders that
   // pass the per-channel allowFrom gate are also recognised as owners.
   '*',
@@ -430,7 +453,7 @@ const MANAGED_MATH_FORMAT_PROMPT = [
   '  write `$\\log_a(xy)$`, `$a^{m+n}$`, `$x_1$` instead.',
   '- Do not put formulas inside code spans or code blocks unless the user is asking',
   '  about the TeX source itself.',
-  '- Exception: native IM channel replies (DingTalk, Feishu, Telegram, etc.) do NOT',
+  '- Exception: native IM channel replies (Weixin, WeCom, QQ, Email, etc.) do NOT',
   '  render TeX — use readable plain-text notation there.',
 ].join('\n');
 
@@ -686,7 +709,6 @@ const ANTHROPIC_EXPLICIT_CONTEXT_CACHE_PARAMS: OpenClawAgentModelDefault = {
 };
 
 const OPENAI_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
-const XAI_BASE_URL = 'https://api.x.ai/v1';
 
 const normalizeBaseUrlPath = (rawBaseUrl: string, pathName: string): string => {
   const trimmed = rawBaseUrl.trim();
@@ -1581,6 +1603,40 @@ const addExplicitContextCacheDefault = (
   );
 };
 
+const readPreinstalledPluginIds = (): string[] => {
+  try {
+    const pkgPath = path.join(app.getAppPath(), 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const plugins = pkg.openclaw?.plugins;
+    if (!Array.isArray(plugins)) return [];
+    return plugins
+      .map((p: { id?: string }) => p.id)
+      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+};
+
+type PreinstalledOpenClawPlugin = {
+  packageId: string;
+  pluginId: string;
+};
+
+/** Plugins declared under `openclaw.plugins` in package.json, resolved to manifest ids. */
+const readPreinstalledPlugins = (): PreinstalledOpenClawPlugin[] => (
+  readPreinstalledPluginIds()
+    .map((packageId) => {
+      const pluginId = resolveOpenClawExtensionPluginId(packageId);
+      return pluginId ? { packageId, pluginId } : null;
+    })
+    .filter((plugin): plugin is PreinstalledOpenClawPlugin => plugin !== null)
+);
+
+const pluginMatches = (
+  plugin: PreinstalledOpenClawPlugin,
+  ...ids: string[]
+): boolean => ids.includes(plugin.packageId) || ids.includes(plugin.pluginId);
+
 const isBundledPluginAvailable = (pluginId: string): boolean => {
   return hasBundledOpenClawExtension(pluginId);
 };
@@ -1675,12 +1731,6 @@ export type OpenClawConfigSyncResult = {
   restartImpact?: OpenClawConfigImpact;
 };
 
-const buildStreamingModeConfig = (
-  mode: 'off' | 'partial' | 'block' | 'progress',
-): { mode: 'off' | 'partial' | 'block' | 'progress' } => ({
-  mode,
-});
-
 const buildManagedBrowserProxyExtraArgs = (browserWebAccess: BrowserWebAccessConfig): string[] => {
   if (
     !isSystemProxyEnabled()
@@ -1706,6 +1756,11 @@ type OpenClawConfigSyncDeps = {
   getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   getAgents?: () => Agent[];
   getUserPlugins?: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
+  getQQInstances?: () => QQInstanceConfig[];
+  getWecomInstances?: () => WecomInstanceConfig[];
+  getEmailOpenClawConfig?: () => EmailMultiInstanceConfig;
+  getWeixinConfig: () => WeixinOpenClawConfig | null;
+  getIMSettings?: () => IMSettings | null;
   canUseMediaGeneration?: () => boolean;
 };
 
@@ -1721,6 +1776,13 @@ export class OpenClawConfigSync {
   private readonly getSkillsList?: () => Array<{ id: string; name: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
   private readonly getUserPlugins: () => Array<{ pluginId: string; enabled: boolean; config?: Record<string, unknown> }>;
+  private readonly getQQInstances: () => QQInstanceConfig[];
+  private readonly getWecomInstances: () => WecomInstanceConfig[];
+  private readonly getEmailOpenClawConfig?: () => EmailMultiInstanceConfig;
+  private readonly getWeixinConfig: () => WeixinOpenClawConfig | null;
+  private readonly getIMSettings?: () => IMSettings | null;
+  /** Agent bindings written into the OpenClaw config; rebuilt on every sync. */
+  private currentBindingsObj: { bindings?: Array<Record<string, unknown>> } = {};
   private readonly canUseMediaGeneration: () => boolean;
 
   constructor(deps: OpenClawConfigSyncDeps) {
@@ -1735,6 +1797,11 @@ export class OpenClawConfigSync {
     this.getSkillsList = deps.getSkillsList;
     this.getAgents = deps.getAgents;
     this.getUserPlugins = deps.getUserPlugins ?? (() => []);
+    this.getQQInstances = deps.getQQInstances ?? (() => []);
+    this.getWecomInstances = deps.getWecomInstances ?? (() => []);
+    this.getEmailOpenClawConfig = deps.getEmailOpenClawConfig;
+    this.getWeixinConfig = deps.getWeixinConfig;
+    this.getIMSettings = deps.getIMSettings;
     this.canUseMediaGeneration = deps.canUseMediaGeneration ?? (() => false);
   }
 
@@ -2112,6 +2179,20 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     const taskWorkingDirectory = mainAgentWorkingDirectory || (coworkConfig.workingDirectory || '').trim();
     ensureDir(mainWorkspacePath);
 
+    const preinstalledPlugins = readPreinstalledPlugins();
+    const hasPreinstalledPlugin = (...ids: string[]) => (
+      preinstalledPlugins.some((plugin) => pluginMatches(plugin, ...ids))
+    );
+
+    const qqInstances = this.getQQInstances();
+    const wecomInstances = this.getWecomInstances();
+    const emailConfig = this.getEmailOpenClawConfig?.();
+    const weixinConfig = this.getWeixinConfig();
+
+    // Pre-compute bindings and detect changes so we can signal a hard restart
+    // when only bindings change (channel plugins don't hot-reload bindings).
+    this.currentBindingsObj = this.buildBindings();
+
     const hasAskUserPlugin = isBundledPluginAvailable('ask-user-question');
     const hasMediaGenPlugin = isBundledPluginAvailable('ego-media-generation');
     // Runtime-bundled xai extension (dist/extensions/xai): provides the Grok
@@ -2233,6 +2314,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         },
         ...this.buildAgentsList(primaryModel, this.engineManager.getStateDir(), availableProviders, agents),
       },
+      ...this.currentBindingsObj,
       session: this.buildSessionConfig(),
       commands: {
         ownerAllowFrom: MANAGED_OWNER_ALLOW_FROM,
@@ -2262,6 +2344,11 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         // "plugin not found" warnings even when the package exists.
         const knownStalePluginIds = [
           'qwen-portal-auth',
+          'openclaw-qqbot',
+          'clawemail-email',
+          ...preinstalledPlugins
+            .filter((plugin) => plugin.packageId !== plugin.pluginId)
+            .map((plugin) => plugin.packageId),
         ];
         const transientPluginIds = [
           OPENCLAW_MODEL_COMPAT_PLUGIN_ID,
@@ -2271,6 +2358,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             !knownStalePluginIds.includes(id) && !transientPluginIds.includes(id)
           )),
         );
+        const qqbotPluginEnabled = qqInstances.some(i => i.enabled && i.appId);
         const userPlugins = this.getUserPlugins();
 
         const pluginEntries: Record<string, unknown> = {
@@ -2279,6 +2367,25 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           // config rewrites.  Our managed entries below override stale values.
           ...cleanedExistingEntries,
           [BUNDLED_BROWSER_PLUGIN_ID]: { enabled: true },
+          [QQBOT_OPENCLAW_CHANNEL]: { enabled: qqbotPluginEnabled },
+          ...Object.fromEntries(
+            preinstalledPlugins.map(plugin => {
+              // Sync plugin enabled state with the corresponding channel config.
+              // When a channel is disabled in the UI, its plugin must also be
+              // disabled so OpenClaw doesn't load it at all.
+              const pluginEnabled = (() => {
+                if (pluginMatches(plugin, 'openclaw-qqbot', QQBOT_OPENCLAW_CHANNEL)) return qqbotPluginEnabled;
+                if (pluginMatches(plugin, WECOM_PLUGIN_ID)) return wecomInstances.some(i => i.enabled && i.botId);
+                // Always keep the WeChat plugin enabled so QR login discovery works.
+                if (pluginMatches(plugin, WEIXIN_OPENCLAW_CHANNEL)) return true;
+                if (pluginMatches(plugin, 'clawemail-email', EMAIL_PLUGIN_ID)) {
+                  return !!emailConfig?.instances.some(i => i.enabled && i.email);
+                }
+                return true; // other plugins stay enabled
+              })();
+              return [plugin.pluginId, { enabled: pluginEnabled }];
+            }),
+          ),
           ...(hasAskUserPlugin ? { 'ask-user-question': { enabled: true } } : {}),
           ...(hasMediaGenPlugin ? { 'ego-media-generation': { enabled: true } } : {}),
           ...(hasModelCompatConfig
@@ -2330,6 +2437,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           ...(hasModelCompatConfig
             ? [OPENCLAW_MODEL_COMPAT_PLUGIN_ID]
             : []),
+          ...preinstalledPlugins.map(plugin => plugin.pluginId),
           ...userPlugins.filter(plugin => plugin.enabled).map(plugin => plugin.pluginId),
         ])).sort();
 
@@ -2367,6 +2475,88 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           : {};
       })())
     };
+
+    // Sync QQ OpenClaw channel config (via qqbot plugin) — multi-instance via accounts
+    const enabledQQInstances = qqInstances.filter(i => i.enabled && i.appId);
+    if (enabledQQInstances.length > 0) {
+      const accounts: Record<string, unknown> = {};
+      for (let idx = 0; idx < enabledQQInstances.length; idx++) {
+        const inst = enabledQQInstances[idx];
+        const secretVar = idx === 0 ? 'LOBSTER_QQ_CLIENT_SECRET' : `LOBSTER_QQ_CLIENT_SECRET_${idx}`;
+        const account: Record<string, unknown> = {
+          enabled: true,
+          name: inst.instanceName,
+          appId: inst.appId,
+          clientSecret: `\${${secretVar}}`,
+          // v2026.4.8 schema removed dmPolicy/groupPolicy/groupAllowFrom/historyLimit.
+          // Only allowFrom and markdownSupport remain as valid account properties.
+          allowFrom: (() => {
+            const ids = inst.allowFrom?.length ? [...inst.allowFrom] : [];
+            if (inst.dmPolicy === 'open' && !ids.includes('*')) ids.push('*');
+            return ids;
+          })(),
+          markdownSupport: inst.markdownSupport ?? true,
+        };
+        if (inst.imageServerBaseUrl) {
+          account.imageServerBaseUrl = inst.imageServerBaseUrl;
+        }
+        accounts[inst.instanceId.slice(0, 8)] = account;
+      }
+      managedConfig.channels = {
+        ...((managedConfig.channels as Record<string, unknown>) || {}),
+        [QQBOT_OPENCLAW_CHANNEL]: { enabled: true, accounts },
+      };
+    }
+
+    // Sync WeCom OpenClaw channel config (via wecom-openclaw-plugin) — multi-instance via accounts
+    const enabledWecomInstances = wecomInstances.filter(i => i.enabled && i.botId);
+    if (enabledWecomInstances.length > 0) {
+      const accounts: Record<string, unknown> = {};
+      for (let idx = 0; idx < enabledWecomInstances.length; idx++) {
+        const inst = enabledWecomInstances[idx];
+        const secretVar = idx === 0 ? 'LOBSTER_WECOM_SECRET' : `LOBSTER_WECOM_SECRET_${idx}`;
+        accounts[inst.instanceId.slice(0, 8)] = {
+          enabled: true,
+          name: inst.instanceName,
+          botId: inst.botId,
+          secret: `\${${secretVar}}`,
+          dmPolicy: inst.dmPolicy || 'open',
+          allowFrom: (() => {
+            const ids = inst.allowFrom?.length ? [...inst.allowFrom] : [];
+            if (inst.dmPolicy === 'open' && !ids.includes('*')) ids.push('*');
+            return ids;
+          })(),
+          groupPolicy: inst.groupPolicy || 'open',
+          groupAllowFrom: (() => {
+            const ids = inst.groupAllowFrom?.length ? [...inst.groupAllowFrom] : [];
+            if (inst.groupPolicy === 'open' && !ids.includes('*')) ids.push('*');
+            return ids;
+          })(),
+          sendThinkingMessage: inst.sendThinkingMessage ?? true,
+        };
+      }
+      managedConfig.channels = {
+        ...((managedConfig.channels as Record<string, unknown>) || {}),
+        [WECOM_OPENCLAW_CHANNEL]: { accounts },
+      };
+    }
+
+    // Sync Weixin OpenClaw channel config (via openclaw-weixin plugin)
+    if (hasPreinstalledPlugin(WEIXIN_OPENCLAW_CHANNEL)) {
+      const weixinChannel: Record<string, unknown> = {
+        enabled: !!weixinConfig?.enabled,
+        dmPolicy: weixinConfig?.dmPolicy || 'open',
+        allowFrom: (() => {
+          const ids = weixinConfig?.allowFrom?.length ? [...weixinConfig.allowFrom] : [];
+          if ((weixinConfig?.dmPolicy || 'open') === 'open' && !ids.includes('*')) ids.push('*');
+          return ids;
+        })(),
+      };
+      managedConfig.channels = {
+        ...((managedConfig.channels as Record<string, unknown>) || {}),
+        [WEIXIN_OPENCLAW_CHANNEL]: weixinChannel,
+      };
+    }
 
     // Sync MCP servers into OpenClaw's native mcp.servers config field.
     // OpenClaw handles connection, tool discovery, and execution natively.
@@ -2588,6 +2778,46 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     // ${LOBSTER_MCP_BRIDGE_SECRET} placeholder doesn't crash the gateway.
     // Used by the ask-user-question plugin.
     env.LOBSTER_MCP_BRIDGE_SECRET = this.getMcpBridgeSecret?.() || 'unconfigured';
+
+    // QQ — per-instance secrets (must match sync() indexing: enabled instances only)
+    const qqInstances = this.getQQInstances();
+    const enabledQQ = qqInstances.filter(i => i.enabled && i.appSecret);
+    for (let idx = 0; idx < enabledQQ.length; idx++) {
+      if (idx === 0) {
+        env.LOBSTER_QQ_CLIENT_SECRET = enabledQQ[idx].appSecret;
+      } else {
+        env[`LOBSTER_QQ_CLIENT_SECRET_${idx}`] = enabledQQ[idx].appSecret;
+      }
+    }
+
+    // WeCom — per-instance secrets (must match sync() indexing: enabled instances only)
+    const wecomInstances = this.getWecomInstances();
+    const enabledWecom = wecomInstances.filter(i => i.enabled && i.secret);
+    for (let idx = 0; idx < enabledWecom.length; idx++) {
+      if (idx === 0) {
+        env.LOBSTER_WECOM_SECRET = enabledWecom[idx].secret;
+      } else {
+        env[`LOBSTER_WECOM_SECRET_${idx}`] = enabledWecom[idx].secret;
+      }
+    }
+
+    // Email credentials
+    const emailConfig = this.getEmailOpenClawConfig?.();
+    if (emailConfig?.instances) {
+      for (const inst of emailConfig.instances) {
+        if (!inst.enabled || !inst.email) continue;
+
+        const envSuffix = inst.instanceId.replace(/^email-/, '').replace(/-/g, '_').toUpperCase();
+
+        if (inst.transport === 'imap' && inst.password) {
+          env[`LOBSTER_EMAIL_${envSuffix}_PASSWORD`] = inst.password;
+        }
+
+        if (inst.transport === 'ws' && inst.apiKey) {
+          env[`LOBSTER_EMAIL_${envSuffix}_APIKEY`] = inst.apiKey;
+        }
+      }
+    }
 
     const D = gwDiagTs;
     const keysSummary = Object.keys(env).sort().map(k => {
@@ -2847,8 +3077,8 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
   /**
    * Sync AGENTS.md to the OpenClaw workspace directory.
    * Embeds the skills routing prompt and system prompt so that OpenClaw's
-   * native channel connectors (DingTalk, Feishu, etc.) can discover and
-   * invoke EgoAI skills.
+   * native channel connectors (Weixin, WeCom, QQ, Email, etc.) can discover
+   * and invoke EgoAI skills.
    */
   private syncAgentsMd(workspaceDir: string, coworkConfig: CoworkConfig): string | undefined {
     const MARKER = '<!-- EgoAI managed: do not edit below this line -->';
@@ -2971,6 +3201,89 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     ];
 
     return list.length > 0 ? { list } : {};
+  }
+
+  /**
+   * Translate `settings.platformAgentBindings` into OpenClaw channel bindings so
+   * messages arriving on a channel are routed to the agent the user picked.
+   * `main` is OpenClaw's implicit default and is never written explicitly.
+   */
+  private buildBindings(): { bindings?: Array<Record<string, unknown>> } {
+    const imSettings = this.getIMSettings?.();
+    const platformBindings = imSettings?.platformAgentBindings;
+    if (!platformBindings || Object.keys(platformBindings).length === 0) return {};
+
+    const agents = this.getAgents?.() ?? [];
+
+    const bindings: Array<Record<string, unknown>> = [];
+
+    // Handle per-instance bindings for multi-instance platforms
+    const multiInstanceChannels: Record<string, { channel: string; getInstances: () => Array<{ instanceId: string; enabled: boolean }> }> = {
+      qq: { channel: QQBOT_OPENCLAW_CHANNEL, getInstances: () => this.getQQInstances() },
+      wecom: { channel: WECOM_OPENCLAW_CHANNEL, getInstances: () => this.getWecomInstances() },
+    };
+
+    for (const [platform, { channel, getInstances }] of Object.entries(multiInstanceChannels)) {
+      try {
+        const instances = getInstances();
+        for (const inst of instances) {
+          if (!inst.enabled) continue;
+          // Check for per-instance binding: `platform:instanceId`
+          const bindingKey = `${platform}:${inst.instanceId}`;
+          const agentId = platformBindings[bindingKey];
+          if (!agentId || agentId === 'main') continue;
+          const targetAgent = agents.find(a => a.id === agentId && a.enabled);
+          if (!targetAgent) continue;
+          const accountId = inst.instanceId.slice(0, 8);
+          if (!accountId) continue;
+          bindings.push({ agentId, match: { channel, accountId } });
+        }
+        // Also check legacy platform-level binding
+        const platformAgentId = platformBindings[platform];
+        if (platformAgentId && platformAgentId !== 'main') {
+          const targetAgent = agents.find(a => a.id === platformAgentId && a.enabled);
+          if (targetAgent && instances.some(i => i.enabled)) {
+            bindings.push({
+              agentId: platformAgentId,
+              match: { channel, accountId: OPENCLAW_BINDING_ANY_ACCOUNT_ID },
+            });
+          }
+        }
+      } catch {
+        // Skip platforms that fail to load config
+      }
+    }
+
+    // Handle single-instance platforms
+    const singleInstanceChannels: Array<{
+      getter: () => { enabled: boolean } | null;
+      channel: string;
+      platform: string;
+    }> = [
+      { getter: () => this.getWeixinConfig(), channel: WEIXIN_OPENCLAW_CHANNEL, platform: 'weixin' },
+    ];
+
+    for (const { getter, channel, platform } of singleInstanceChannels) {
+      const agentId = platformBindings[platform];
+      if (!agentId || agentId === 'main') continue;
+
+      const targetAgent = agents.find(a => a.id === agentId && a.enabled);
+      if (!targetAgent) continue;
+
+      try {
+        const cfg = getter();
+        if (cfg?.enabled) {
+          bindings.push({
+            agentId,
+            match: { channel, accountId: OPENCLAW_BINDING_ANY_ACCOUNT_ID },
+          });
+        }
+      } catch {
+        // Skip channels that fail to load config
+      }
+    }
+
+    return bindings.length > 0 ? { bindings } : {};
   }
 
   /**

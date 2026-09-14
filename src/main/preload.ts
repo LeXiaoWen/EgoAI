@@ -23,6 +23,7 @@ import type { CoworkSearchMessageCursor } from '../shared/cowork/search';
 import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
 import { DshIpcChannel } from '../shared/dshEngine/constants';
+import { ImIpcChannel } from '../shared/im/constants';
 import type {
   KitReference,
   KitSkillMetadata,
@@ -45,6 +46,7 @@ import {
 import { McpIpcChannel } from '../shared/mcp/constants';
 import { OpenClawEngineIpc } from '../shared/openclawEngine/constants';
 import { PermissionIpcChannel } from '../shared/permissions/constants';
+import type { Platform } from '../shared/platform';
 import { type ShellGetBrowserAppsInput, ShellIpc } from '../shared/shell/constants';
 import { SkinIpc } from '../shared/skin/constants';
 import type {
@@ -860,6 +862,80 @@ contextBridge.exposeInMainWorld('electron', {
     fromRenderer: (level: string, tag: string, message: string) =>
       ipcRenderer.send('log:fromRenderer', level, tag, message),
   },
+  im: {
+    // Configuration
+    getConfig: () => ipcRenderer.invoke(ImIpcChannel.GetConfig),
+    setConfig: (
+      config: Record<string, unknown>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => ipcRenderer.invoke(ImIpcChannel.SetConfig, config, options),
+    syncConfig: () => ipcRenderer.invoke(ImIpcChannel.SyncConfig),
+
+    // Gateway control
+    startGateway: (platform: Platform) => ipcRenderer.invoke(ImIpcChannel.StartGateway, platform),
+    stopGateway: (platform: Platform) => ipcRenderer.invoke(ImIpcChannel.StopGateway, platform),
+    testGateway: (platform: Platform, configOverride?: Record<string, unknown>) =>
+      ipcRenderer.invoke(ImIpcChannel.TestGateway, platform, configOverride),
+
+    // Status
+    getStatus: () => ipcRenderer.invoke(ImIpcChannel.GetStatus),
+    getLocalIp: () => ipcRenderer.invoke(ImIpcChannel.GetLocalIp) as Promise<string>,
+
+    // Weixin QR login
+    weixinQrLoginStart: () => ipcRenderer.invoke(ImIpcChannel.WeixinQrLoginStart),
+    weixinQrLoginWait: (sessionKey?: string) =>
+      ipcRenderer.invoke(ImIpcChannel.WeixinQrLoginWait, sessionKey),
+
+    // Pairing
+    listPairingRequests: (platform: string) =>
+      ipcRenderer.invoke(ImIpcChannel.ListPairingRequests, platform),
+    approvePairingCode: (platform: string, code: string) =>
+      ipcRenderer.invoke(ImIpcChannel.ApprovePairingCode, platform, code),
+    rejectPairingRequest: (platform: string, code: string) =>
+      ipcRenderer.invoke(ImIpcChannel.RejectPairingCode, platform, code),
+
+    // WeCom multi-instance
+    addWecomInstance: (name: string) => ipcRenderer.invoke(ImIpcChannel.AddWecomInstance, name),
+    deleteWecomInstance: (instanceId: string) =>
+      ipcRenderer.invoke(ImIpcChannel.DeleteWecomInstance, instanceId),
+    setWecomInstanceConfig: (
+      instanceId: string,
+      config: Record<string, unknown>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => ipcRenderer.invoke(ImIpcChannel.SetWecomInstanceConfig, instanceId, config, options),
+
+    // QQ multi-instance
+    addQQInstance: (name: string) => ipcRenderer.invoke(ImIpcChannel.AddQQInstance, name),
+    deleteQQInstance: (instanceId: string) =>
+      ipcRenderer.invoke(ImIpcChannel.DeleteQQInstance, instanceId),
+    setQQInstanceConfig: (
+      instanceId: string,
+      config: Record<string, unknown>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => ipcRenderer.invoke(ImIpcChannel.SetQQInstanceConfig, instanceId, config, options),
+
+    // Email multi-instance
+    addEmailInstance: (name: string) => ipcRenderer.invoke(ImIpcChannel.AddEmailInstance, name),
+    deleteEmailInstance: (instanceId: string) =>
+      ipcRenderer.invoke(ImIpcChannel.DeleteEmailInstance, instanceId),
+    setEmailInstanceConfig: (
+      instanceId: string,
+      config: Record<string, unknown>,
+      options?: { syncGateway?: boolean; restartGatewayIfRunning?: boolean; markRestartOnSave?: boolean },
+    ) => ipcRenderer.invoke(ImIpcChannel.SetEmailInstanceConfig, instanceId, config, options),
+
+    // Event listeners
+    onStatusChange: (callback: (status: unknown) => void) => {
+      const handler = (_event: unknown, status: unknown) => callback(status);
+      ipcRenderer.on(ImIpcChannel.StatusChange, handler);
+      return () => ipcRenderer.removeListener(ImIpcChannel.StatusChange, handler);
+    },
+    onMessageReceived: (callback: (message: unknown) => void) => {
+      const handler = (_event: unknown, message: unknown) => callback(message);
+      ipcRenderer.on(ImIpcChannel.MessageReceived, handler);
+      return () => ipcRenderer.removeListener(ImIpcChannel.MessageReceived, handler);
+    },
+  },
   networkStatus: {
     send: (status: 'online' | 'offline') => ipcRenderer.send('network:status-change', status),
   },
@@ -868,52 +944,5 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(CoworkIpcChannel.GetMediaModels, type) as Promise<{ success: boolean; models?: unknown[]; error?: string }>,
     getTaskStatus: (taskId: number, type: 'image' | 'video') =>
       ipcRenderer.invoke('media:getTaskStatus', taskId, type) as Promise<{ success: boolean; task?: unknown; error?: string }>,
-  },
-  feishu: {
-    install: {
-      qrcode: (isLark: boolean) =>
-        ipcRenderer.invoke('feishu:install:qrcode', { isLark }) as Promise<{
-          url: string;
-          deviceCode: string;
-          interval: number;
-          expireIn: number;
-        }>,
-      poll: (deviceCode: string) =>
-        ipcRenderer.invoke('feishu:install:poll', { deviceCode }) as Promise<{
-          done: boolean;
-          appId?: string;
-          appSecret?: string;
-          domain?: string;
-          error?: string;
-        }>,
-      verify: (appId: string, appSecret: string) =>
-        ipcRenderer.invoke('feishu:install:verify', { appId, appSecret }) as Promise<{
-          success: boolean;
-          error?: string;
-        }>,
-    },
-  },
-  dingtalk: {
-    install: {
-      qrcode: () =>
-        ipcRenderer.invoke('dingtalk:install:qrcode') as Promise<{
-          url: string;
-          deviceCode: string;
-          interval: number;
-          expireIn: number;
-        }>,
-      poll: (deviceCode: string) =>
-        ipcRenderer.invoke('dingtalk:install:poll', { deviceCode }) as Promise<{
-          done: boolean;
-          clientId?: string;
-          clientSecret?: string;
-          error?: string;
-        }>,
-      verify: (clientId: string, clientSecret: string) =>
-        ipcRenderer.invoke('dingtalk:install:verify', { clientId, clientSecret }) as Promise<{
-          success: boolean;
-          error?: string;
-        }>,
-    },
   },
 });

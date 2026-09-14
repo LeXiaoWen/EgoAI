@@ -10,7 +10,6 @@ import {
   type MenuItemConstructorOptions,
   nativeImage,
   nativeTheme,
-  net,
   powerMonitor,
   powerSaveBlocker,
   protocol,
@@ -21,7 +20,6 @@ import {
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { buildGoalSettingMessageMetadata } from '../common/goalCommandDisplay';
@@ -94,6 +92,7 @@ import {
   DataMigrationRestoreStatus,
 } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
+import { ImIpcChannel } from '../shared/im/constants';
 import type {
   InstalledKitRecord,
   KitReference,
@@ -117,13 +116,11 @@ import {
   OpenClawEngineIpc,
   OpenClawGatewayRepairErrorCode,
 } from '../shared/openclawEngine/constants';
-import { PlatformRegistry } from '../shared/platform';
+import { type Platform } from '../shared/platform';
 import type { ProviderConfig } from '../shared/providers';
 import {
-  ModelRuntimeProfile,
   OpenClawProviderId,
   parseModelThinkingLevel,
-  ProviderName,
 } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
@@ -146,8 +143,21 @@ import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
-import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
+import { type CoworkForkContextMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
+import {
+  type EmailInstanceConfig,
+  IMGatewayConfig,
+  IMGatewayManager,
+  type QQInstanceConfig,
+  type WecomInstanceConfig,
+} from './im';
+import {
+  approvePairingCode,
+  listPairingRequests,
+  readAllowFromStore,
+  rejectPairingRequest,
+} from './im/imPairingStore';
 import { registerAgentHandlers } from './ipcHandlers/agents';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { ensureDshEngineReady, registerDshHandlers } from './ipcHandlers/dsh/handlers';
@@ -181,7 +191,6 @@ import {
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { getCoworkLogPath } from './libs/coworkLogger';
 import {
-  registerProxyTokenRefresher,
   startCoworkOpenAICompatProxy,
   stopCoworkOpenAICompatProxy,
 } from './libs/coworkOpenAICompatProxy';
@@ -219,16 +228,11 @@ import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
-import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   migrateAgentModelRefs,
-  parsePrimaryModelRef,
   resolveQualifiedAgentModelRef,
-  resolveServerModelRefForRun,
-  ServerModelRefResolutionStatus,
-  shouldSyncServerModelConfig,
-  syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
+import { OpenClawChannelSessionSync } from './libs/openclawChannelSessionSync';
 import {
   CONFIG_DELIVERY_FALLBACK_REASON_PREFIX,
   deliverOpenClawConfigToGateway,
@@ -237,6 +241,8 @@ import {
 import {
   classifyAppConfigChange,
   classifyCoworkConfigChange,
+  classifyImOpenClawConfigChange,
+  createStableConfigFingerprint,
   OpenClawConfigImpact,
   OpenClawConfigImpactReason,
   removeImpactDecisionReasons,
@@ -251,10 +257,6 @@ import {
   getCoworkParentSessionId,
   resolveCoworkSessionIdByOpenClawSessionKey,
 } from './libs/openclawLocalSessionResolver';
-import {
-  buildManagedSessionKey,
-  DEFAULT_MANAGED_AGENT_ID,
-} from './libs/openclawManagedSessionKey';
 import {
   addMemoryEntry,
   deleteMemoryEntry,
@@ -586,32 +588,6 @@ const buildAvailableOpenClawProviders = (): Record<string, { models: Array<{ id:
   }
 
   return providerMap;
-};
-
-const openClawConfigHasServerModels = (modelIds: string[]): boolean => {
-  const normalizedModelIds = modelIds.map(modelId => modelId.trim()).filter(Boolean);
-  if (normalizedModelIds.length === 0) return true;
-
-  try {
-    const configPath = getOpenClawEngineManager().getConfigPath();
-    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      models?: {
-        providers?: Record<string, { models?: Array<{ id?: string }> }>;
-      };
-    };
-    const serverProviderModels = parsed.models?.providers?.[OpenClawProviderId.EgoaiServer]?.models;
-    if (!Array.isArray(serverProviderModels)) return false;
-
-    const configuredModelIds = new Set(
-      serverProviderModels
-        .map(model => (typeof model.id === 'string' ? model.id.trim() : ''))
-        .filter(Boolean),
-    );
-    return normalizedModelIds.every(modelId => configuredModelIds.has(modelId));
-  } catch (error) {
-    console.debug('[Auth:getModels] OpenClaw config inspection failed; scheduling model sync.', error);
-    return false;
-  }
 };
 
 const normalizeOpenClawModelRef = (modelRef: string): string => {
@@ -1042,6 +1018,7 @@ let store: SqliteStore | null = null;
 let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
+let imGatewayManager: IMGatewayManager | null = null;
 let skillManager: SkillManager | null = null;
 let mcpRuntime: McpRuntime | null = null;
 let skinRuntimeController: SkinRuntimeController | null = null;
@@ -1308,18 +1285,6 @@ const resolveSessionWorkingDirectory = (options: { cwd?: string; agentId?: strin
   return resolveAgentDefaultWorkingDirectory(options.agentId);
 };
 
-const isEgoaiServerModelRef = (modelRef: string): boolean => {
-  const normalized = modelRef.trim();
-  if (!normalized) return false;
-
-  const parsed = parsePrimaryModelRef(normalized);
-  if (parsed) {
-    return parsed.providerId === ProviderName.EgoaiServer;
-  }
-
-  return getAllServerModelMetadata().some(model => model.modelId === normalized);
-};
-
 const resolveCoworkAgentEngine = (): CoworkAgentEngine => {
   return 'openclaw';
 };
@@ -1349,6 +1314,41 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
           .listUserPlugins()
           .filter(p => !isHiddenUserPluginId(p.pluginId))
           .map(p => ({ pluginId: p.pluginId, enabled: p.enabled, config: p.config })),
+      getQQInstances: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getQQInstances();
+        } catch {
+          return [];
+        }
+      },
+      getWecomInstances: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getWecomInstances();
+        } catch {
+          return [];
+        }
+      },
+      getEmailOpenClawConfig: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getEmailConfig();
+        } catch {
+          return { instances: [] };
+        }
+      },
+      getWeixinConfig: () => {
+        try {
+          return getIMGatewayManager().getConfig().weixin;
+        } catch {
+          return null;
+        }
+      },
+      getIMSettings: () => {
+        try {
+          return getIMGatewayManager().getConfig().settings;
+        } catch {
+          return null;
+        }
+      },
       canUseMediaGeneration: () => true,
     });
   }
@@ -2182,6 +2182,22 @@ const getCoworkEngineRouter = () => {
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
       );
+      // Wire up channel session sync for IM conversations via OpenClaw
+      try {
+        const imManager = getIMGatewayManager();
+        const imStore = imManager.getIMStore();
+        if (imStore) {
+          const channelSessionSync = new OpenClawChannelSessionSync({
+            coworkStore: getCoworkStore(),
+            imStore,
+            getDefaultCwd: (agentId?: string) =>
+              resolveAgentDefaultWorkingDirectory(agentId) || os.homedir(),
+          });
+          openClawRuntimeAdapter.setChannelSessionSync(channelSessionSync);
+        }
+      } catch (error) {
+        console.warn('[Main] Failed to set up channel session sync:', error);
+      }
     }
     coworkEngineRouter = new CoworkEngineRouter({
       getCurrentEngine: resolveCoworkAgentEngine,
@@ -2189,6 +2205,118 @@ const getCoworkEngineRouter = () => {
     });
   }
   return coworkEngineRouter;
+};
+
+const getIMGatewayManager = () => {
+  if (!imGatewayManager) {
+    imGatewayManager = new IMGatewayManager(getStore().getDatabase(), {
+      syncOpenClawConfig: async (reason, options) => {
+        await syncOpenClawConfig({
+          reason: reason || 'im-gateway-sync',
+          restartGatewayIfRunning: options?.restartGatewayIfRunning,
+        });
+      },
+      ensureOpenClawGatewayConnected: async () => {
+        const configApplyStatus = await waitForOpenClawConfigApply('IM gateway client connection');
+        if (configApplyStatus) {
+          throw new Error(configApplyStatus.message || 'OpenClaw is applying configuration changes.');
+        }
+        if (openClawRuntimeAdapter) {
+          await openClawRuntimeAdapter.connectGatewayIfNeeded();
+        }
+      },
+      getOpenClawGatewayClient: () => openClawRuntimeAdapter?.getGatewayClient() ?? null,
+      ensureOpenClawGatewayReady: async () => {
+        if (!openClawRuntimeAdapter) {
+          throw new Error('OpenClaw runtime adapter not initialized.');
+        }
+        const configApplyStatus = await waitForOpenClawConfigApply('IM gateway readiness check');
+        if (configApplyStatus) {
+          throw new Error(configApplyStatus.message || 'OpenClaw is applying configuration changes.');
+        }
+        await openClawRuntimeAdapter.ensureReady();
+        await openClawRuntimeAdapter.connectGatewayIfNeeded();
+      },
+      getOpenClawSessionKeysForCoworkSession: sessionId =>
+        openClawRuntimeAdapter?.getSessionKeysForSession(sessionId) ?? [],
+    });
+
+    // Forward IM events to renderer.
+    //
+    // Note: all four channels (weixin / wecom / qq / email) run inside the
+    // OpenClaw gateway. IMGatewayManager therefore never emits `statusChange`
+    // or `message` today — those were the removed in-process NIM gateway's
+    // events. The subscriptions are kept because they are the renderer-facing
+    // contract (`window.electron.im.onStatusChange` / `onMessageReceived`);
+    // the live status path is the `im:status:get` invoke channel.
+    imGatewayManager.on('statusChange', status => {
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(ImIpcChannel.StatusChange, status);
+        }
+      });
+    });
+
+    imGatewayManager.on('message', message => {
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(ImIpcChannel.MessageReceived, message);
+        }
+      });
+    });
+
+    imGatewayManager.on('error', ({ platform, error }) => {
+      console.error(`[IM Gateway] ${platform} error:`, error);
+    });
+  }
+  return imGatewayManager;
+};
+
+/**
+ * Repoint IM channel sessions bound to `agentId` at the agent's current default
+ * working directory. Called when an agent's working directory changes so that
+ * existing IM conversations do not keep running in the old cwd.
+ */
+const refreshImSessionWorkingDirectoriesForAgent = (agentId: string): number => {
+  const normalizedAgentId = agentId.trim() || AgentId.Main;
+  const resolvedCwd = resolveAgentDefaultWorkingDirectory(normalizedAgentId);
+  if (!resolvedCwd) {
+    return 0;
+  }
+
+  try {
+    const imStore = getIMGatewayManager().getIMStore();
+    const coworkStoreInstance = getCoworkStore();
+    let updatedCount = 0;
+
+    for (const mapping of imStore.listSessionMappings()) {
+      if ((mapping.agentId || AgentId.Main) !== normalizedAgentId) {
+        continue;
+      }
+
+      const session = coworkStoreInstance.getSession(mapping.coworkSessionId);
+      if (!session || session.cwd === resolvedCwd) {
+        continue;
+      }
+
+      coworkStoreInstance.updateSession(session.id, { cwd: resolvedCwd }, { touchUpdatedAt: false });
+      updatedCount += 1;
+    }
+
+    if (updatedCount > 0) {
+      console.debug(
+        `[ChannelSessionSync] refreshed ${updatedCount} IM session working directories for agent ${normalizedAgentId} to ${resolvedCwd}`,
+      );
+    }
+
+    openClawRuntimeAdapter?.clearChannelSessionCache();
+    return updatedCount;
+  } catch (error) {
+    console.warn('[IM] Failed to refresh IM session working directories:', error);
+    return 0;
+  }
 };
 
 let coworkTempJanitor: CoworkTempJanitor | null = null;
@@ -4201,6 +4329,13 @@ if (!gotTheLock) {
       }
       skinRuntimeController?.handleSessionDeleted(sessionId);
       getDesktopNotificationManager().handleSessionDeleted(sessionId);
+      // Clean up IM session mapping so that new channel messages
+      // create a fresh session instead of referencing a deleted one.
+      try {
+        getIMGatewayManager()?.getIMStore()?.deleteSessionMappingByCoworkSessionId(sessionId);
+      } catch {
+        // IM store may not be initialised yet; safe to ignore.
+      }
       // Notify runtime to purge in-memory caches for this session
       // so that channel messages can create a fresh session.
       try {
@@ -4235,6 +4370,11 @@ if (!gotTheLock) {
       for (const sessionId of sessionIds) {
         skinRuntimeController?.handleSessionDeleted(sessionId);
         getDesktopNotificationManager().handleSessionDeleted(sessionId);
+        try {
+          getIMGatewayManager()?.getIMStore()?.deleteSessionMappingByCoworkSessionId(sessionId);
+        } catch {
+          // IM store may not be initialised yet; safe to ignore.
+        }
         try {
           router.onSessionDeleted(sessionId);
         } catch {
@@ -4380,8 +4520,19 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle('cowork:session:remoteManaged', async () => {
-    return { success: true, remoteManaged: false };
+  ipcMain.handle('cowork:session:remoteManaged', async (_event, sessionId: string) => {
+    try {
+      const mapping = getIMGatewayManager()
+        ?.getIMStore()
+        ?.getSessionMappingByCoworkSessionId(sessionId);
+      return { success: true, remoteManaged: !!mapping };
+    } catch (error) {
+      return {
+        success: false,
+        remoteManaged: false,
+        error: error instanceof Error ? error.message : 'Failed to check remote managed session',
+      };
+    }
   });
 
   ipcMain.handle(
@@ -4551,6 +4702,7 @@ if (!gotTheLock) {
     resolveAgentWorkspacePath,
     resolveDefaultAgentModelRef,
     syncOpenClawConfig,
+    refreshImSessionWorkingDirectoriesForAgent,
   });
 
   ipcMain.handle(
@@ -5302,6 +5454,585 @@ if (!gotTheLock) {
   // ==================== Plugin Management IPC Handlers ====================
 
   registerPluginHandlers({ getCoworkStore, syncOpenClawConfig });
+
+  // ==================== IM Gateway IPC Handlers ====================
+
+  // Debounce + serialization for IM config sync requests.
+  // A single Settings Save can include many IM edits; they are coalesced into
+  // one OpenClaw config sync and at most one gateway restart.
+  // The running/pending flags prevent concurrent sync operations from racing:
+  // if a sync is in progress when new changes arrive, they are queued and
+  // a follow-up sync runs after the current one completes.
+  let imConfigSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let imConfigSyncRunning = false;
+  let imConfigSyncPending = false;
+  let imConfigSyncRestartGatewayIfRunning = false;
+  let lastSyncedImOpenClawConfigFingerprint: string | null = null;
+  const IM_CONFIG_SYNC_DEBOUNCE_MS = 600;
+  type IMConfigSyncOptions = {
+    restartGatewayIfRunning?: boolean;
+  };
+  type IMConfigSetOptions = IMConfigSyncOptions & {
+    syncGateway?: boolean;
+    markRestartOnSave?: boolean;
+  };
+  type IMConfigSyncResult = {
+    success: boolean;
+    error?: string;
+    pending?: boolean;
+  };
+  let imConfigRestartOnNextSettingsSave = false;
+
+  const getCurrentImOpenClawConfigFingerprint = () => {
+    return createStableConfigFingerprint(getIMGatewayManager().getConfig());
+  };
+
+  const ensureLastSyncedImOpenClawConfigFingerprint = (fallbackFingerprint?: string) => {
+    if (lastSyncedImOpenClawConfigFingerprint === null) {
+      lastSyncedImOpenClawConfigFingerprint = fallbackFingerprint ?? getCurrentImOpenClawConfigFingerprint();
+    }
+    return lastSyncedImOpenClawConfigFingerprint;
+  };
+
+  const doImConfigSync = async (): Promise<IMConfigSyncResult> => {
+    imConfigSyncRunning = true;
+    const restartGatewayIfRunning = imConfigSyncRestartGatewayIfRunning;
+    imConfigSyncRestartGatewayIfRunning = false;
+    try {
+      const syncResult = await syncOpenClawConfig({
+        reason: 'im-config-change',
+        restartGatewayIfRunning,
+      });
+      if (!syncResult.success) {
+        throw new Error(syncResult.error || 'OpenClaw config sync failed.');
+      }
+      lastSyncedImOpenClawConfigFingerprint = getCurrentImOpenClawConfigFingerprint();
+      imConfigRestartOnNextSettingsSave = false;
+      // After config sync, ensure the runtime adapter's WebSocket client
+      // is connected so channel events are received.
+      if (openClawRuntimeAdapter) {
+        try {
+          await openClawRuntimeAdapter.connectGatewayIfNeeded();
+        } catch (connectError) {
+          console.error('[IM] Failed to connect gateway client after config sync:', connectError);
+        }
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('[IM] Config sync failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'OpenClaw config sync failed.',
+      };
+    } finally {
+      imConfigSyncRunning = false;
+      if (imConfigSyncPending) {
+        const restartPendingGatewayIfRunning = imConfigSyncRestartGatewayIfRunning;
+        imConfigSyncPending = false;
+        scheduleImConfigSync({
+          restartGatewayIfRunning: restartPendingGatewayIfRunning,
+        });
+      }
+    }
+  };
+
+  const scheduleImConfigSync = (options: IMConfigSyncOptions = {}) => {
+    if (options.restartGatewayIfRunning) {
+      imConfigSyncRestartGatewayIfRunning = true;
+    }
+    if (imConfigSyncRunning) {
+      // A sync is already in progress; mark pending so it re-runs after completion.
+      imConfigSyncPending = true;
+      return;
+    }
+    if (imConfigSyncTimer) clearTimeout(imConfigSyncTimer);
+    imConfigSyncTimer = setTimeout(() => {
+      imConfigSyncTimer = null;
+      void doImConfigSync();
+    }, IM_CONFIG_SYNC_DEBOUNCE_MS);
+  };
+
+  const runImConfigSyncNow = async (options: IMConfigSyncOptions = {}): Promise<IMConfigSyncResult> => {
+    if (options.restartGatewayIfRunning) {
+      imConfigSyncRestartGatewayIfRunning = true;
+    }
+    if (imConfigSyncTimer) {
+      clearTimeout(imConfigSyncTimer);
+      imConfigSyncTimer = null;
+    }
+    if (imConfigSyncRunning) {
+      imConfigSyncPending = true;
+      return { success: true, pending: true };
+    }
+    return await doImConfigSync();
+  };
+
+  const recordImOpenClawConfigMutation = (
+    previousFingerprint: string,
+    nextFingerprint: string,
+    options: IMConfigSetOptions = {},
+  ) => {
+    ensureLastSyncedImOpenClawConfigFingerprint(previousFingerprint);
+    if (options.markRestartOnSave) {
+      imConfigRestartOnNextSettingsSave = true;
+    }
+    const impactDecision = classifyImOpenClawConfigChange(previousFingerprint, nextFingerprint, {
+      forceRestart: options.restartGatewayIfRunning === true,
+    });
+    if (impactDecision.impact === OpenClawConfigImpact.None) {
+      return;
+    }
+
+    if (options.syncGateway) {
+      scheduleImConfigSync({
+        restartGatewayIfRunning:
+          options.restartGatewayIfRunning === true
+          || impactDecision.impact === OpenClawConfigImpact.Restart,
+      });
+    }
+  };
+
+  const mutateImOpenClawConfig = (
+    mutate: () => void,
+    options: IMConfigSetOptions = {},
+  ) => {
+    const previousFingerprint = getCurrentImOpenClawConfigFingerprint();
+    mutate();
+    const nextFingerprint = getCurrentImOpenClawConfigFingerprint();
+    recordImOpenClawConfigMutation(previousFingerprint, nextFingerprint, options);
+  };
+
+  ipcMain.handle(ImIpcChannel.GetConfig, async () => {
+    try {
+      const config = getIMGatewayManager().getConfig();
+      return { success: true, config };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get IM config',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    ImIpcChannel.SetConfig,
+    async (_event, config: Partial<IMGatewayConfig>, options?: IMConfigSetOptions) => {
+      try {
+        mutateImOpenClawConfig(() => {
+          getIMGatewayManager().setConfig(config, {
+            syncGateway: false,
+            restartGatewayIfRunning: false,
+          });
+        }, {
+          syncGateway: options?.syncGateway,
+          restartGatewayIfRunning: options?.restartGatewayIfRunning,
+          markRestartOnSave: options?.markRestartOnSave,
+        });
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set IM config',
+        };
+      }
+    },
+  );
+
+  // Explicitly apply IM settings to OpenClaw.
+  // Called from the global Settings Save button after IM fields have been
+  // persisted locally without gateway sync.
+  ipcMain.handle(ImIpcChannel.SyncConfig, async () => {
+    try {
+      const nextFingerprint = getCurrentImOpenClawConfigFingerprint();
+      const previousFingerprint = ensureLastSyncedImOpenClawConfigFingerprint(nextFingerprint);
+      const impactDecision = classifyImOpenClawConfigChange(previousFingerprint, nextFingerprint, {
+        forceRestart: imConfigRestartOnNextSettingsSave,
+      });
+      if (impactDecision.impact === OpenClawConfigImpact.None) {
+        lastSyncedImOpenClawConfigFingerprint = nextFingerprint;
+        return { success: true, skipped: true };
+      }
+      const syncResult = await runImConfigSyncNow({
+        restartGatewayIfRunning: impactDecision.impact === OpenClawConfigImpact.Restart,
+      });
+      if (!syncResult.success) {
+        return { success: false, error: syncResult.error };
+      }
+      return { success: true, skipped: false };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to sync IM config',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.StartGateway, async (_event, platform: Platform) => {
+    try {
+      // Persist enabled state
+      const manager = getIMGatewayManager();
+      manager.setConfig({ [platform]: { enabled: true } });
+      await manager.startGateway(platform);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to start gateway',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.StopGateway, async (_event, platform: Platform) => {
+    try {
+      // Persist disabled state
+      const manager = getIMGatewayManager();
+      manager.setConfig({ [platform]: { enabled: false } });
+      await manager.stopGateway(platform);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to stop gateway',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    ImIpcChannel.TestGateway,
+    async (_event, platform: Platform, configOverride?: Partial<IMGatewayConfig>) => {
+      try {
+        const result = await getIMGatewayManager().testGateway(platform, configOverride);
+        return { success: true, result };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to test gateway connectivity',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(ImIpcChannel.GetStatus, async () => {
+    try {
+      const status = await getIMGatewayManager().getStatusWithOpenClawRuntime();
+      return { success: true, status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get IM status',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.GetLocalIp, () => {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+    return '127.0.0.1';
+  });
+
+  // Weixin QR login
+  ipcMain.handle(ImIpcChannel.WeixinQrLoginStart, async () => {
+    try {
+      const result = await getIMGatewayManager().weixinQrLoginStart();
+      return { success: true, ...result };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to start Weixin QR login',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.WeixinQrLoginWait, async (_event, sessionKey?: string) => {
+    try {
+      const previousFingerprint = getCurrentImOpenClawConfigFingerprint();
+      const result = await getIMGatewayManager().weixinQrLoginWait(sessionKey);
+      const nextFingerprint = getCurrentImOpenClawConfigFingerprint();
+      recordImOpenClawConfigMutation(previousFingerprint, nextFingerprint, {
+        syncGateway: false,
+        restartGatewayIfRunning: false,
+        markRestartOnSave: result.connected === true || result.alreadyConnected === true,
+      });
+      return { success: true, ...result };
+    } catch (error) {
+      return {
+        success: false,
+        connected: false,
+        message: error instanceof Error ? error.message : 'Weixin QR login failed',
+      };
+    }
+  });
+
+  // ---- Pairing IPC handlers ----
+
+  ipcMain.handle(ImIpcChannel.ListPairingRequests, async (_event, platform: string) => {
+    try {
+      const stateDir = getOpenClawEngineManager().getStateDir();
+      const requests = listPairingRequests(platform, stateDir);
+      const allowFrom = readAllowFromStore(platform, stateDir);
+      return { success: true, requests, allowFrom };
+    } catch (error) {
+      return {
+        success: false,
+        requests: [],
+        allowFrom: [],
+        error: error instanceof Error ? error.message : 'Failed to list pairing requests',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.ApprovePairingCode, async (_event, platform: string, code: string) => {
+    try {
+      const stateDir = getOpenClawEngineManager().getStateDir();
+      const approved = approvePairingCode(platform, code, stateDir);
+      if (!approved) {
+        return { success: false, error: 'Pairing code not found or expired' };
+      }
+      await syncOpenClawConfig({
+        reason: `im-pairing-approval:${platform}`,
+      });
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to approve pairing code',
+      };
+    }
+  });
+
+  ipcMain.handle(ImIpcChannel.RejectPairingCode, async (_event, platform: string, code: string) => {
+    try {
+      const stateDir = getOpenClawEngineManager().getStateDir();
+      const rejected = rejectPairingRequest(platform, code, stateDir);
+      if (!rejected) {
+        return { success: false, error: 'Pairing code not found or expired' };
+      }
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reject pairing request',
+      };
+    }
+  });
+
+  // ---- WeCom multi-instance handlers ----
+
+  ipcMain.handle(ImIpcChannel.AddWecomInstance, async (_event, name: string) => {
+    try {
+      const instanceId = crypto.randomUUID();
+      const { DEFAULT_WECOM_CONFIG: defaults } = await import('./im/types');
+      const instance = {
+        ...defaults,
+        instanceId,
+        instanceName: name || 'WeCom Bot',
+      };
+      getIMGatewayManager().getIMStore().setWecomInstanceConfig(instanceId, instance);
+      return { success: true, instance };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add WeCom instance',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    ImIpcChannel.DeleteWecomInstance,
+    async (_event, instanceId: string, options?: IMConfigSetOptions) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().deleteWecomInstance(instanceId),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete WeCom instance',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    ImIpcChannel.SetWecomInstanceConfig,
+    async (
+      _event,
+      instanceId: string,
+      config: Partial<WecomInstanceConfig>,
+      options?: IMConfigSetOptions,
+    ) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().setWecomInstanceConfig(instanceId, config),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set WeCom instance config',
+        };
+      }
+    },
+  );
+
+  // ---- QQ multi-instance handlers ----
+
+  ipcMain.handle(ImIpcChannel.AddQQInstance, async (_event, name: string) => {
+    try {
+      const instanceId = crypto.randomUUID();
+      const { DEFAULT_QQ_CONFIG: defaults } = await import('./im/types');
+      const instance = {
+        ...defaults,
+        instanceId,
+        instanceName: name || 'QQ Bot',
+      };
+      getIMGatewayManager().getIMStore().setQQInstanceConfig(instanceId, instance);
+      return { success: true, instance };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add QQ instance',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    ImIpcChannel.DeleteQQInstance,
+    async (_event, instanceId: string, options?: IMConfigSetOptions) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().deleteQQInstance(instanceId),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete QQ instance',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    ImIpcChannel.SetQQInstanceConfig,
+    async (
+      _event,
+      instanceId: string,
+      config: Partial<QQInstanceConfig>,
+      options?: IMConfigSetOptions,
+    ) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().setQQInstanceConfig(instanceId, config),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set QQ instance config',
+        };
+      }
+    },
+  );
+
+  // ---- Email multi-instance handlers ----
+
+  ipcMain.handle(ImIpcChannel.AddEmailInstance, async (_event, name: string) => {
+    try {
+      const instanceId = crypto.randomUUID();
+      const { DEFAULT_EMAIL_INSTANCE_CONFIG: defaults } = await import('./im/types');
+      const instance = {
+        ...defaults,
+        instanceId,
+        instanceName: name || 'Email',
+        email: '',
+        agentId: AgentId.Main,
+      };
+      getIMGatewayManager().getIMStore().setEmailInstanceConfig(instanceId, instance);
+      return { success: true, instance };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to add email instance',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    ImIpcChannel.DeleteEmailInstance,
+    async (_event, instanceId: string, options?: IMConfigSetOptions) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().deleteEmailInstance(instanceId),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete email instance',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    ImIpcChannel.SetEmailInstanceConfig,
+    async (
+      _event,
+      instanceId: string,
+      config: Partial<EmailInstanceConfig>,
+      options?: IMConfigSetOptions,
+    ) => {
+      try {
+        mutateImOpenClawConfig(
+          () => getIMGatewayManager().getIMStore().setEmailInstanceConfig(instanceId, config),
+          {
+            syncGateway: options?.syncGateway,
+            restartGatewayIfRunning: options?.restartGatewayIfRunning,
+            markRestartOnSave: options?.markRestartOnSave,
+          },
+        );
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set email instance config',
+        };
+      }
+    },
+  );
 
   registerPermissionIpcHandlers({ ipcMain, isDev });
 
@@ -7350,6 +8081,13 @@ if (!gotTheLock) {
     profiler.measure('skillManager');
 
     console.log(profiler.summary());
+
+    // Auto-reconnect IM channels that were enabled before restart
+    getIMGatewayManager()
+      .startAllEnabled()
+      .catch(error => {
+        console.error('[IM] Failed to auto-start enabled gateways:', error);
+      });
 
     // Reconnect OpenClaw gateway WS after system wake from sleep/suspend
     powerMonitor.on('resume', () => {

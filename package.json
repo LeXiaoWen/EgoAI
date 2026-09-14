@@ -9,7 +9,29 @@
   "version": "2026.9.2",
   "openclaw": {
     "version": "v2026.6.1",
-    "repo": "https://github.com/openclaw/openclaw.git"
+    "repo": "https://github.com/openclaw/openclaw.git",
+    "plugins": [
+      {
+        "id": "openclaw-weixin",
+        "npm": "@tencent-weixin/openclaw-weixin",
+        "version": "2.4.3"
+      },
+      {
+        "id": "wecom-openclaw-plugin",
+        "npm": "@wecom/wecom-openclaw-plugin",
+        "version": "2026.5.25"
+      },
+      {
+        "id": "qqbot",
+        "npm": "@openclaw/qqbot",
+        "version": "2026.6.1"
+      },
+      {
+        "id": "clawemail-email",
+        "npm": "@clawemail/email",
+        "version": "0.9.12"
+      }
+    ]
   },
   "dsh": {
     "version": "0.1.1-rc.1",

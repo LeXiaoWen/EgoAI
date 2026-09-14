@@ -27,6 +27,11 @@ export interface AgentHandlerDeps {
   resolveAgentWorkspacePath: (agentId: string) => string;
   resolveDefaultAgentModelRef: () => string;
   syncOpenClawConfig: SyncOpenClawConfig;
+  /**
+   * Repoint IM channel sessions bound to this agent at its new default working
+   * directory. Returns the number of sessions updated.
+   */
+  refreshImSessionWorkingDirectoriesForAgent: (agentId: string) => number;
 }
 
 const buildLegacyIdentityCleanupFailure = (
@@ -71,6 +76,7 @@ export function registerAgentHandlers(deps: AgentHandlerDeps): void {
     getAgentManager,
     getCoworkStore,
     getCoworkEngineRouter,
+    refreshImSessionWorkingDirectoriesForAgent,
     resolveDefaultAgentModelRef,
     syncOpenClawConfig,
   } = deps;
@@ -129,6 +135,9 @@ export function registerAgentHandlers(deps: AgentHandlerDeps): void {
           && previousAgent !== null
           && previousWorkingDirectory !== nextWorkingDirectory;
         const agent = getAgentManager().updateAgent(id, updates);
+        if (workingDirectoryChanged && agent) {
+          refreshImSessionWorkingDirectoriesForAgent(agent.id);
+        }
         const shouldSyncOpenClawConfig = Object.keys(updates).some(
           key => key !== 'pinned' && key !== 'sortOrder',
         );
