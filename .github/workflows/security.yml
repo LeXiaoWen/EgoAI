@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
       
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@v3.88.30
+        uses: trufflesecurity/trufflehog@v3.97.1
         with:
           path: ./
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package.json') }}
