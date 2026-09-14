@@ -243,6 +243,7 @@ import {
   shouldSyncServerModelConfig,
   syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
+import { OpenClawChannelSessionSync } from './libs/openclawChannelSessionSync';
 import {
   CONFIG_DELIVERY_FALLBACK_REASON_PREFIX,
   deliverOpenClawConfigToGateway,
@@ -1366,6 +1367,41 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
           .listUserPlugins()
           .filter(p => !isHiddenUserPluginId(p.pluginId))
           .map(p => ({ pluginId: p.pluginId, enabled: p.enabled, config: p.config })),
+      getQQInstances: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getQQInstances();
+        } catch {
+          return [];
+        }
+      },
+      getWecomInstances: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getWecomInstances();
+        } catch {
+          return [];
+        }
+      },
+      getEmailOpenClawConfig: () => {
+        try {
+          return getIMGatewayManager().getIMStore().getEmailConfig();
+        } catch {
+          return { instances: [] };
+        }
+      },
+      getWeixinConfig: () => {
+        try {
+          return getIMGatewayManager().getConfig().weixin;
+        } catch {
+          return null;
+        }
+      },
+      getIMSettings: () => {
+        try {
+          return getIMGatewayManager().getConfig().settings;
+        } catch {
+          return null;
+        }
+      },
       canUseMediaGeneration: () => true,
     });
   }
@@ -2199,6 +2235,22 @@ const getCoworkEngineRouter = () => {
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
       );
+      // Wire up channel session sync for IM conversations via OpenClaw
+      try {
+        const imManager = getIMGatewayManager();
+        const imStore = imManager.getIMStore();
+        if (imStore) {
+          const channelSessionSync = new OpenClawChannelSessionSync({
+            coworkStore: getCoworkStore(),
+            imStore,
+            getDefaultCwd: (agentId?: string) =>
+              resolveAgentDefaultWorkingDirectory(agentId) || os.homedir(),
+          });
+          openClawRuntimeAdapter.setChannelSessionSync(channelSessionSync);
+        }
+      } catch (error) {
+        console.warn('[Main] Failed to set up channel session sync:', error);
+      }
     }
     coworkEngineRouter = new CoworkEngineRouter({
       getCurrentEngine: resolveCoworkAgentEngine,
@@ -2306,6 +2358,13 @@ const refreshImSessionWorkingDirectoriesForAgent = (agentId: string): number => 
       updatedCount += 1;
     }
 
+    if (updatedCount > 0) {
+      console.debug(
+        `[ChannelSessionSync] refreshed ${updatedCount} IM session working directories for agent ${normalizedAgentId} to ${resolvedCwd}`,
+      );
+    }
+
+    openClawRuntimeAdapter?.clearChannelSessionCache();
     return updatedCount;
   } catch (error) {
     console.warn('[IM] Failed to refresh IM session working directories:', error);
@@ -6035,77 +6094,6 @@ if (!gotTheLock) {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to set email instance config',
-        };
-      }
-    },
-  );
-
-  // Email: Test connection
-  ipcMain.handle(
-    ImIpcChannel.TestEmailConnection,
-    async (_event, { instanceId }: { instanceId: string }) => {
-      try {
-        const imManager = getIMGatewayManager();
-        const imStore = imManager.getIMStore();
-        const emailConfig = imStore.getEmailConfig();
-        const instance = emailConfig.instances.find(i => i.instanceId === instanceId);
-
-        if (!instance) {
-          throw new Error('Instance not found');
-        }
-
-        if (instance.transport === 'imap') {
-          // Test IMAP connection using node-imap
-
-          let Imap: new (config: Record<string, unknown>) => any;
-          try {
-            Imap = require('imap');
-          } catch {
-            throw new Error('IMAP module not installed. Please install the imap package.');
-          }
-          const deriveImapHost = (email: string) => {
-            const domain = email.split('@')[1];
-            return `imap.${domain}`;
-          };
-
-          const connection = new Imap({
-            user: instance.email,
-            password: instance.password,
-            host: instance.imapHost || deriveImapHost(instance.email),
-            port: instance.imapPort || 993,
-            tls: true,
-          });
-
-          await new Promise<void>((resolve, reject) => {
-            connection.once('ready', () => {
-              connection.end();
-              resolve();
-            });
-            connection.once('error', reject);
-            connection.connect();
-          });
-        } else if (instance.transport === 'ws') {
-          // Test WebSocket connection by fetching token
-          let fetchIMToken: (
-            apiKey: string,
-            email: string,
-            logger: typeof console,
-          ) => Promise<unknown>;
-          try {
-            ({ fetchIMToken } = require('@clawemail/node-sdk'));
-          } catch {
-            throw new Error(
-              'Email SDK not installed. Please install the @clawemail/node-sdk package.',
-            );
-          }
-          await fetchIMToken(instance.apiKey!, instance.email, console);
-        }
-
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
         };
       }
     },

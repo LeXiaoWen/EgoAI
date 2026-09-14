@@ -43,7 +43,6 @@ export const ImIpcChannel = {
   AddEmailInstance: 'im:email:instance:add',
   DeleteEmailInstance: 'im:email:instance:delete',
   SetEmailInstanceConfig: 'im:email:instance:config:set',
-  TestEmailConnection: 'email:testConnection',
 } as const;
 
 export type ImIpcChannel = typeof ImIpcChannel[keyof typeof ImIpcChannel];
