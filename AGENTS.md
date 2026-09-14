@@ -111,11 +111,6 @@ Import from Vitest:
 import { describe, expect, test } from 'vitest';
 ```
 
-There are legacy `tests/*.test.mjs` files that use Node's built-in
-`node:test`. They are not part of the default `npm test` run. Only run them
-explicitly, e.g. `node --test tests/<file>.test.mjs`, when touching that
-legacy coverage.
-
 Avoid importing Electron-only APIs such as `electron-log` directly in tests.
 Inline or extract pure logic instead.
 
