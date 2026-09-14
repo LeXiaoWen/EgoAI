@@ -39,4 +39,9 @@ export const BUNDLED_SKILL_DISPLAY_NAMES: Record<string, LocalizedText> = {
   'weather': { zh: '天气查询', en: 'Weather' },
   'web-search': { zh: '联网搜索', en: 'Web Search' },
   'xlsx': { zh: '表格处理', en: 'Excel Spreadsheets' },
+  'meeting-minutes': { zh: '会议纪要', en: 'Meeting Minutes' },
+  'design-review': { zh: '设计校审', en: 'Design Review' },
+  'urban-renewal': { zh: '城市更新', en: 'Urban Renewal' },
+  'hazardous-construction-plan': { zh: '危大工程施工方案', en: 'Hazardous Construction Plan' },
+  'geotechnical-survey': { zh: '勘察报告', en: 'Geotechnical Survey Report' },
 };

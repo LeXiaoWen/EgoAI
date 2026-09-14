@@ -5,7 +5,9 @@ import AcademicCapIcon from '../icons/AcademicCapIcon';
 import ChartBarIcon from '../icons/ChartBarIcon';
 import DevicePhoneMobileIcon from '../icons/DevicePhoneMobileIcon';
 import DocumentTextIcon from '../icons/DocumentTextIcon';
+import ExclamationTriangleIcon from '../icons/ExclamationTriangleIcon';
 import GlobeAltIcon from '../icons/GlobeAltIcon';
+import ListChecksIcon from '../icons/ListChecksIcon';
 import PresentationChartBarIcon from '../icons/PresentationChartBarIcon';
 
 interface QuickActionBarProps {
@@ -22,6 +24,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   DocumentTextIcon,
   ChartBarIcon,
   AcademicCapIcon,
+  ListChecksIcon,
+  ExclamationTriangleIcon,
 };
 
 const QuickActionBar: React.FC<QuickActionBarProps> = ({ actions, selectedActionId, onActionSelect }) => {

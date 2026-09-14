@@ -2,84 +2,46 @@
   "version": 1,
   "actions": [
     {
-      "id": "pptx",
-      "icon": "PresentationChartBarIcon",
-      "color": "#F59E0B",
-      "skillMapping": "pptx",
-      "prompts": [
-        {
-          "id": "pptx-work-report"
-        },
-        {
-          "id": "pptx-content-research"
-        },
-        {
-          "id": "pptx-training"
-        },
-        {
-          "id": "pptx-ai-intro"
-        }
-      ]
+      "id": "meeting-minutes",
+      "icon": "ListChecksIcon",
+      "color": "#14B8A6",
+      "skillMapping": "meeting-minutes",
+      "prompts": []
     },
     {
-      "id": "data-analysis",
-      "icon": "ChartBarIcon",
-      "color": "#8B5CF6",
-      "skillMapping": "xlsx",
-      "prompts": [
-        {
-          "id": "excel-summary"
-        },
-        {
-          "id": "image-to-excel"
-        },
-        {
-          "id": "word-report"
-        },
-        {
-          "id": "multi-excel-merge"
-        }
-      ]
-    },
-    {
-      "id": "doc-writing",
+      "id": "design-review",
       "icon": "DocumentTextIcon",
-      "color": "#10B981",
-      "skillMapping": "docx",
-      "prompts": [
-        {
-          "id": "doc-meeting-minutes"
-        },
-        {
-          "id": "doc-weekly-report"
-        },
-        {
-          "id": "doc-proposal"
-        },
-        {
-          "id": "doc-polish"
-        }
-      ]
+      "color": "#F97316",
+      "skillMapping": "design-review",
+      "prompts": []
     },
     {
-      "id": "website",
+      "id": "urban-renewal",
       "icon": "GlobeAltIcon",
-      "color": "#3B82F6",
-      "skillMapping": "frontend-design",
-      "prompts": [
-        {
-          "id": "web-resume"
-        },
-        {
-          "id": "web-store"
-        },
-        {
-          "id": "web-event"
-        },
-        {
-          "id": "web-survey"
-        }
-      ]
+      "color": "#0EA5E9",
+      "skillMapping": "urban-renewal",
+      "prompts": []
+    },
+    {
+      "id": "hazardous-construction-plan",
+      "icon": "ExclamationTriangleIcon",
+      "color": "#EF4444",
+      "skillMapping": "hazardous-construction-plan",
+      "prompts": []
+    },
+    {
+      "id": "geotechnical-survey",
+      "icon": "ChartBarIcon",
+      "color": "#22C55E",
+      "skillMapping": "geotechnical-survey",
+      "prompts": []
+    },
+    {
+      "id": "bid-design-writer",
+      "icon": "DocumentTextIcon",
+      "color": "#A855F7",
+      "skillMapping": "bid-design-writer",
+      "prompts": []
     }
   ]
 }
