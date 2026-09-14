@@ -16,135 +16,128 @@
  *   - getCommandDangerLevel: returns { level, reason } where level is
  *                            'destructive' | 'caution' | 'safe'.
  */
-import assert from 'node:assert/strict';
-import test from 'node:test';
-import { createRequire } from 'node:module';
+import { expect, test } from 'vitest';
 
-const require = createRequire(import.meta.url);
-const {
-  isDeleteCommand,
-  isDangerousCommand,
-  getCommandDangerLevel,
-} = require('../dist-electron/main/libs/commandSafety.js');
+import { getCommandDangerLevel, isDangerousCommand, isDeleteCommand } from './commandSafety';
 
 // ── isDeleteCommand ──────────────────────────────────────────────────────────
 
 test('isDeleteCommand: rm matches', () => {
-  assert.equal(isDeleteCommand('rm file.txt'), true);
+  expect(isDeleteCommand('rm file.txt')).toBe(true);
 });
 
 test('isDeleteCommand: rm with multiple flags matches', () => {
-  assert.equal(isDeleteCommand('rm -i obsolete.log'), true);
+  expect(isDeleteCommand('rm -i obsolete.log')).toBe(true);
 });
 
 test('isDeleteCommand: rmdir matches', () => {
-  assert.equal(isDeleteCommand('rmdir /tmp/build'), true);
+  expect(isDeleteCommand('rmdir /tmp/build')).toBe(true);
 });
 
 test('isDeleteCommand: unlink matches', () => {
-  assert.equal(isDeleteCommand('unlink /var/run/app.pid'), true);
+  expect(isDeleteCommand('unlink /var/run/app.pid')).toBe(true);
 });
 
 test('isDeleteCommand: del matches (Windows style)', () => {
-  assert.equal(isDeleteCommand('del C:\\Users\\foo\\bar.txt'), true);
+  expect(isDeleteCommand('del C:\\Users\\foo\\bar.txt')).toBe(true);
 });
 
 test('isDeleteCommand: erase matches', () => {
-  assert.equal(isDeleteCommand('erase temp.dat'), true);
+  expect(isDeleteCommand('erase temp.dat')).toBe(true);
 });
 
 test('isDeleteCommand: remove-item matches (PowerShell)', () => {
-  assert.equal(isDeleteCommand('Remove-Item -Path C:\\Logs\\*.log'), true);
+  expect(isDeleteCommand('Remove-Item -Path C:\\Logs\\*.log')).toBe(true);
 });
 
 test('isDeleteCommand: find -delete matches', () => {
-  assert.equal(isDeleteCommand('find . -name "*.tmp" -delete'), true);
+  expect(isDeleteCommand('find . -name "*.tmp" -delete')).toBe(true);
 });
 
 test('isDeleteCommand: git clean matches', () => {
-  assert.equal(isDeleteCommand('git clean -fd'), true);
+  expect(isDeleteCommand('git clean -fd')).toBe(true);
 });
 
 test('isDeleteCommand: git clean with extra flags matches', () => {
-  assert.equal(isDeleteCommand('git clean -fdx'), true);
+  expect(isDeleteCommand('git clean -fdx')).toBe(true);
 });
 
 test('isDeleteCommand: ls does not match', () => {
-  assert.equal(isDeleteCommand('ls -la /tmp'), false);
+  expect(isDeleteCommand('ls -la /tmp')).toBe(false);
 });
 
 test('isDeleteCommand: git push does not match', () => {
-  assert.equal(isDeleteCommand('git push origin main'), false);
+  expect(isDeleteCommand('git push origin main')).toBe(false);
 });
 
 test('isDeleteCommand: echo does not match', () => {
-  assert.equal(isDeleteCommand('echo "hello world"'), false);
+  expect(isDeleteCommand('echo "hello world"')).toBe(false);
 });
 
 test('isDeleteCommand: npm install does not match', () => {
-  assert.equal(isDeleteCommand('npm install react'), false);
+  expect(isDeleteCommand('npm install react')).toBe(false);
 });
 
 test('isDeleteCommand: cat does not match', () => {
-  assert.equal(isDeleteCommand('cat /etc/hosts'), false);
+  expect(isDeleteCommand('cat /etc/hosts')).toBe(false);
 });
 
 // ── isDangerousCommand ───────────────────────────────────────────────────────
 
 test('isDangerousCommand: delete commands are dangerous', () => {
-  assert.equal(isDangerousCommand('rm -rf /tmp/old'), true);
+  expect(isDangerousCommand('rm -rf /tmp/old')).toBe(true);
 });
 
 test('isDangerousCommand: git push origin main is dangerous', () => {
-  assert.equal(isDangerousCommand('git push origin main'), true);
+  expect(isDangerousCommand('git push origin main')).toBe(true);
 });
 
 test('isDangerousCommand: git push with upstream flag is dangerous', () => {
-  assert.equal(isDangerousCommand('git push -u origin feat/my-branch'), true);
+  expect(isDangerousCommand('git push -u origin feat/my-branch')).toBe(true);
 });
 
 test('isDangerousCommand: git reset --hard is dangerous', () => {
-  assert.equal(isDangerousCommand('git reset --hard HEAD~1'), true);
+  expect(isDangerousCommand('git reset --hard HEAD~1')).toBe(true);
 });
 
 test('isDangerousCommand: kill is dangerous', () => {
-  assert.equal(isDangerousCommand('kill -9 12345'), true);
+  expect(isDangerousCommand('kill -9 12345')).toBe(true);
 });
 
 test('isDangerousCommand: killall is dangerous', () => {
-  assert.equal(isDangerousCommand('killall node'), true);
+  expect(isDangerousCommand('killall node')).toBe(true);
 });
 
 test('isDangerousCommand: pkill is dangerous', () => {
-  assert.equal(isDangerousCommand('pkill -f my-server'), true);
+  expect(isDangerousCommand('pkill -f my-server')).toBe(true);
 });
 
 test('isDangerousCommand: chmod is dangerous', () => {
-  assert.equal(isDangerousCommand('chmod 777 /usr/local/bin/app'), true);
+  expect(isDangerousCommand('chmod 777 /usr/local/bin/app')).toBe(true);
 });
 
 test('isDangerousCommand: chown is dangerous', () => {
-  assert.equal(isDangerousCommand('chown root:root /etc/shadow'), true);
+  expect(isDangerousCommand('chown root:root /etc/shadow')).toBe(true);
 });
 
 test('isDangerousCommand: ls is safe', () => {
-  assert.equal(isDangerousCommand('ls -la'), false);
+  expect(isDangerousCommand('ls -la')).toBe(false);
 });
 
 test('isDangerousCommand: cat is safe', () => {
-  assert.equal(isDangerousCommand('cat README.md'), false);
+  expect(isDangerousCommand('cat README.md')).toBe(false);
 });
 
 test('isDangerousCommand: npm install is safe', () => {
-  assert.equal(isDangerousCommand('npm install'), false);
+  expect(isDangerousCommand('npm install')).toBe(false);
 });
 
 test('isDangerousCommand: git status is safe', () => {
-  assert.equal(isDangerousCommand('git status'), false);
+  expect(isDangerousCommand('git status')).toBe(false);
 });
 
 test('isDangerousCommand: git log is safe', () => {
-  assert.equal(isDangerousCommand('git log --oneline -10'), false);
+  expect(isDangerousCommand('git log --oneline -10')).toBe(false);
 });
 
 // ── getCommandDangerLevel ────────────────────────────────────────────────────
@@ -153,124 +146,124 @@ test('isDangerousCommand: git log is safe', () => {
 
 test('getCommandDangerLevel: rm -rf → destructive / recursive-delete', () => {
   const result = getCommandDangerLevel('rm -rf /tmp/old');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'recursive-delete');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('recursive-delete');
 });
 
 test('getCommandDangerLevel: rm -r → destructive / recursive-delete', () => {
   const result = getCommandDangerLevel('rm -r build/');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'recursive-delete');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('recursive-delete');
 });
 
 test('getCommandDangerLevel: rm --recursive → destructive / recursive-delete', () => {
   const result = getCommandDangerLevel('rm --recursive dist/');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'recursive-delete');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('recursive-delete');
 });
 
 test('getCommandDangerLevel: git push --force → destructive / git-force-push', () => {
   const result = getCommandDangerLevel('git push --force origin main');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'git-force-push');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('git-force-push');
 });
 
 test('getCommandDangerLevel: git push -f → destructive / git-force-push', () => {
   const result = getCommandDangerLevel('git push -f origin feat/fix');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'git-force-push');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('git-force-push');
 });
 
 test('getCommandDangerLevel: git reset --hard → destructive / git-reset-hard', () => {
   const result = getCommandDangerLevel('git reset --hard HEAD~3');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'git-reset-hard');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('git-reset-hard');
 });
 
 test('getCommandDangerLevel: dd command → destructive / disk-overwrite', () => {
   const result = getCommandDangerLevel('dd if=/dev/zero of=/dev/sda bs=512');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'disk-overwrite');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('disk-overwrite');
 });
 
 test('getCommandDangerLevel: mkfs command → destructive / disk-format', () => {
   const result = getCommandDangerLevel('mkfs.ext4 /dev/sdb1');
-  assert.equal(result.level, 'destructive');
-  assert.equal(result.reason, 'disk-format');
+  expect(result.level).toBe('destructive');
+  expect(result.reason).toBe('disk-format');
 });
 
 // ─── caution ──────────────────────────────────────────
 
 test('getCommandDangerLevel: plain rm → caution / file-delete', () => {
   const result = getCommandDangerLevel('rm old-file.txt');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'file-delete');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('file-delete');
 });
 
 test('getCommandDangerLevel: find -delete → caution / file-delete', () => {
   const result = getCommandDangerLevel('find /tmp -name "*.log" -mtime +7 -delete');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'file-delete');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('file-delete');
 });
 
 test('getCommandDangerLevel: git clean → caution / file-delete', () => {
   const result = getCommandDangerLevel('git clean -fd');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'file-delete');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('file-delete');
 });
 
 test('getCommandDangerLevel: git push without force → caution / git-push', () => {
   const result = getCommandDangerLevel('git push origin main');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'git-push');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('git-push');
 });
 
 test('getCommandDangerLevel: kill → caution / process-kill', () => {
   const result = getCommandDangerLevel('kill -9 9876');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'process-kill');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('process-kill');
 });
 
 test('getCommandDangerLevel: chmod → caution / permission-change', () => {
   const result = getCommandDangerLevel('chmod 755 deploy.sh');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'permission-change');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('permission-change');
 });
 
 test('getCommandDangerLevel: chown → caution / permission-change', () => {
   const result = getCommandDangerLevel('chown www-data:www-data /var/www/app');
-  assert.equal(result.level, 'caution');
-  assert.equal(result.reason, 'permission-change');
+  expect(result.level).toBe('caution');
+  expect(result.reason).toBe('permission-change');
 });
 
 // ─── safe ─────────────────────────────────────────────
 
 test('getCommandDangerLevel: ls → safe', () => {
   const result = getCommandDangerLevel('ls -la /tmp');
-  assert.equal(result.level, 'safe');
-  assert.equal(result.reason, '');
+  expect(result.level).toBe('safe');
+  expect(result.reason).toBe('');
 });
 
 test('getCommandDangerLevel: git status → safe', () => {
   const result = getCommandDangerLevel('git status');
-  assert.equal(result.level, 'safe');
-  assert.equal(result.reason, '');
+  expect(result.level).toBe('safe');
+  expect(result.reason).toBe('');
 });
 
 test('getCommandDangerLevel: npm install → safe', () => {
   const result = getCommandDangerLevel('npm install lodash');
-  assert.equal(result.level, 'safe');
-  assert.equal(result.reason, '');
+  expect(result.level).toBe('safe');
+  expect(result.reason).toBe('');
 });
 
 test('getCommandDangerLevel: echo → safe', () => {
   const result = getCommandDangerLevel('echo "deployment complete"');
-  assert.equal(result.level, 'safe');
-  assert.equal(result.reason, '');
+  expect(result.level).toBe('safe');
+  expect(result.reason).toBe('');
 });
 
 test('getCommandDangerLevel: empty string → safe', () => {
   const result = getCommandDangerLevel('');
-  assert.equal(result.level, 'safe');
-  assert.equal(result.reason, '');
+  expect(result.level).toBe('safe');
+  expect(result.reason).toBe('');
 });

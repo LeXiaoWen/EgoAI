@@ -16,20 +16,17 @@
  *   - approvePairingCode     – moves a request to allowFrom by code
  *   - rejectPairingRequest   – removes a request without adding to allowFrom
  */
-import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
-import { createRequire } from 'node:module';
+import { expect, test } from 'vitest';
 
-const require = createRequire(import.meta.url);
-const {
+import {
+  approvePairingCode,
   listPairingRequests,
   readAllowFromStore,
-  approvePairingCode,
   rejectPairingRequest,
-} = require('../dist-electron/main/im/imPairingStore.js');
+} from './imPairingStore';
 
 // ── test helpers ─────────────────────────────────────────────────────────────
 
@@ -91,8 +88,8 @@ const HOUR_MS = 3600 * 1000;
 test('listPairingRequests returns empty array when credentials dir does not exist', () => {
   const stateDir = makeTmpDir();
   try {
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.deepEqual(result, []);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -102,8 +99,8 @@ test('listPairingRequests returns empty array when pairing file is absent', () =
   const stateDir = makeTmpDir();
   try {
     fs.mkdirSync(credentialsDir(stateDir), { recursive: true });
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.deepEqual(result, []);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -118,11 +115,11 @@ test('listPairingRequests returns a fresh pending request', () => {
       createdAt: isoTimestamp(-30 * 60 * 1000), // 30 minutes ago → still valid
       lastSeenAt: isoTimestamp(-30 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.equal(result.length, 1);
-    assert.equal(result[0].id, 'user:alice');
-    assert.equal(result[0].code, 'ABC123');
+    writePairingFile(stateDir, 'weixin', [request]);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result.length).toBe(1);
+    expect(result[0].id).toBe('user:alice');
+    expect(result[0].code).toBe('ABC123');
   } finally {
     cleanupDir(stateDir);
   }
@@ -137,9 +134,9 @@ test('listPairingRequests filters out expired requests (older than 1 hour)', () 
       createdAt: isoTimestamp(-(HOUR_MS + 1)), // just over 1 hour ago → expired
       lastSeenAt: isoTimestamp(-(HOUR_MS + 1)),
     };
-    writePairingFile(stateDir, 'dingtalk', [expired]);
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.deepEqual(result, []);
+    writePairingFile(stateDir, 'weixin', [expired]);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -160,10 +157,10 @@ test('listPairingRequests returns only non-expired requests from a mixed list', 
       createdAt: isoTimestamp(-2 * HOUR_MS), // 2 hours ago
       lastSeenAt: isoTimestamp(-2 * HOUR_MS),
     };
-    writePairingFile(stateDir, 'dingtalk', [valid, expired]);
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.equal(result.length, 1);
-    assert.equal(result[0].id, 'user:charlie');
+    writePairingFile(stateDir, 'weixin', [valid, expired]);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result.length).toBe(1);
+    expect(result[0].id).toBe('user:charlie');
   } finally {
     cleanupDir(stateDir);
   }
@@ -178,9 +175,9 @@ test('listPairingRequests filters out requests with an invalid createdAt date', 
       createdAt: 'not-a-date',
       lastSeenAt: isoTimestamp(),
     };
-    writePairingFile(stateDir, 'dingtalk', [badDate]);
-    const result = listPairingRequests('dingtalk', stateDir);
-    assert.deepEqual(result, []);
+    writePairingFile(stateDir, 'weixin', [badDate]);
+    const result = listPairingRequests('weixin', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -191,8 +188,8 @@ test('listPairingRequests filters out requests with an invalid createdAt date', 
 test('readAllowFromStore returns empty array when credentials dir does not exist', () => {
   const stateDir = makeTmpDir();
   try {
-    const result = readAllowFromStore('telegram', stateDir);
-    assert.deepEqual(result, []);
+    const result = readAllowFromStore('wecom', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -202,8 +199,8 @@ test('readAllowFromStore returns empty array when allowFrom file is absent', () 
   const stateDir = makeTmpDir();
   try {
     fs.mkdirSync(credentialsDir(stateDir), { recursive: true });
-    const result = readAllowFromStore('telegram', stateDir);
-    assert.deepEqual(result, []);
+    const result = readAllowFromStore('wecom', stateDir);
+    expect(result).toEqual([]);
   } finally {
     cleanupDir(stateDir);
   }
@@ -212,9 +209,9 @@ test('readAllowFromStore returns empty array when allowFrom file is absent', () 
 test('readAllowFromStore returns the stored allowFrom list', () => {
   const stateDir = makeTmpDir();
   try {
-    writeAllowFromFile(stateDir, 'telegram', ['user:alice', 'user:bob']);
-    const result = readAllowFromStore('telegram', stateDir);
-    assert.deepEqual(result, ['user:alice', 'user:bob']);
+    writeAllowFromFile(stateDir, 'wecom', ['user:alice', 'user:bob']);
+    const result = readAllowFromStore('wecom', stateDir);
+    expect(result).toEqual(['user:alice', 'user:bob']);
   } finally {
     cleanupDir(stateDir);
   }
@@ -231,9 +228,9 @@ test('approvePairingCode returns null for an unknown code', () => {
       createdAt: isoTimestamp(-5 * 60 * 1000),
       lastSeenAt: isoTimestamp(-5 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'feishu', [request]);
-    const result = approvePairingCode('feishu', 'WRONG1', stateDir);
-    assert.equal(result, null);
+    writePairingFile(stateDir, 'qqbot', [request]);
+    const result = approvePairingCode('qqbot', 'WRONG1', stateDir);
+    expect(result).toBe(null);
   } finally {
     cleanupDir(stateDir);
   }
@@ -242,8 +239,8 @@ test('approvePairingCode returns null for an unknown code', () => {
 test('approvePairingCode returns null when pairing file does not exist', () => {
   const stateDir = makeTmpDir();
   try {
-    const result = approvePairingCode('feishu', 'ANY000', stateDir);
-    assert.equal(result, null);
+    const result = approvePairingCode('qqbot', 'ANY000', stateDir);
+    expect(result).toBe(null);
   } finally {
     cleanupDir(stateDir);
   }
@@ -258,10 +255,10 @@ test('approvePairingCode removes the request from the pairing file', () => {
       createdAt: isoTimestamp(-1 * 60 * 1000),
       lastSeenAt: isoTimestamp(-1 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    approvePairingCode('dingtalk', 'APVL01', stateDir);
-    const remaining = readPairingFile(stateDir, 'dingtalk');
-    assert.equal(remaining.length, 0);
+    writePairingFile(stateDir, 'weixin', [request]);
+    approvePairingCode('weixin', 'APVL01', stateDir);
+    const remaining = readPairingFile(stateDir, 'weixin');
+    expect(remaining.length).toBe(0);
   } finally {
     cleanupDir(stateDir);
   }
@@ -276,10 +273,10 @@ test('approvePairingCode adds the request id to the default allowFrom', () => {
       createdAt: isoTimestamp(-2 * 60 * 1000),
       lastSeenAt: isoTimestamp(-2 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    approvePairingCode('dingtalk', 'APVL02', stateDir);
-    const allowed = readAllowFromFile(stateDir, 'dingtalk');
-    assert.ok(allowed.includes('user:heidi'));
+    writePairingFile(stateDir, 'weixin', [request]);
+    approvePairingCode('weixin', 'APVL02', stateDir);
+    const allowed = readAllowFromFile(stateDir, 'weixin');
+    expect(allowed.includes('user:heidi')).toBeTruthy();
   } finally {
     cleanupDir(stateDir);
   }
@@ -294,10 +291,10 @@ test('approvePairingCode returns the approved request object', () => {
       createdAt: isoTimestamp(-3 * 60 * 1000),
       lastSeenAt: isoTimestamp(-3 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    const result = approvePairingCode('dingtalk', 'APVL03', stateDir);
-    assert.equal(result.id, 'user:ivan');
-    assert.equal(result.code, 'APVL03');
+    writePairingFile(stateDir, 'weixin', [request]);
+    const result = approvePairingCode('weixin', 'APVL03', stateDir);
+    expect(result.id).toBe('user:ivan');
+    expect(result.code).toBe('APVL03');
   } finally {
     cleanupDir(stateDir);
   }
@@ -312,10 +309,10 @@ test('approvePairingCode is case-insensitive for the code lookup (lowercased inp
       createdAt: isoTimestamp(-1 * 60 * 1000),
       lastSeenAt: isoTimestamp(-1 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
+    writePairingFile(stateDir, 'weixin', [request]);
     // Codes are stored upper-case; caller may pass lower-case
-    const result = approvePairingCode('dingtalk', 'mix123', stateDir);
-    assert.equal(result.id, 'user:judy');
+    const result = approvePairingCode('weixin', 'mix123', stateDir);
+    expect(result.id).toBe('user:judy');
   } finally {
     cleanupDir(stateDir);
   }
@@ -325,17 +322,17 @@ test('approvePairingCode does not add a duplicate entry to allowFrom', () => {
   const stateDir = makeTmpDir();
   try {
     // Pre-populate allowFrom with the same user id
-    writeAllowFromFile(stateDir, 'dingtalk', ['user:ken']);
+    writeAllowFromFile(stateDir, 'weixin', ['user:ken']);
     const request = {
       id: 'user:ken',
       code: 'DUPL01',
       createdAt: isoTimestamp(-1 * 60 * 1000),
       lastSeenAt: isoTimestamp(-1 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    approvePairingCode('dingtalk', 'DUPL01', stateDir);
-    const allowed = readAllowFromFile(stateDir, 'dingtalk');
-    assert.equal(allowed.filter((id) => id === 'user:ken').length, 1);
+    writePairingFile(stateDir, 'weixin', [request]);
+    approvePairingCode('weixin', 'DUPL01', stateDir);
+    const allowed = readAllowFromFile(stateDir, 'weixin');
+    expect(allowed.filter((id) => id === 'user:ken').length).toBe(1);
   } finally {
     cleanupDir(stateDir);
   }
@@ -351,13 +348,13 @@ test('approvePairingCode writes to account-scoped allowFrom when meta.accountId 
       lastSeenAt: isoTimestamp(-1 * 60 * 1000),
       meta: { accountId: 'acct-42' },
     };
-    writePairingFile(stateDir, 'dingtalk', [request]);
-    approvePairingCode('dingtalk', 'ACCT01', stateDir);
+    writePairingFile(stateDir, 'weixin', [request]);
+    approvePairingCode('weixin', 'ACCT01', stateDir);
     // Should appear in the account-scoped file, not the default
-    const defaultAllowed = readAllowFromFile(stateDir, 'dingtalk');
-    const accountAllowed = readAllowFromFile(stateDir, 'dingtalk', 'acct-42');
-    assert.ok(!defaultAllowed.includes('user:lena'), 'should NOT be in default allowFrom');
-    assert.ok(accountAllowed.includes('user:lena'), 'should be in account-scoped allowFrom');
+    const defaultAllowed = readAllowFromFile(stateDir, 'weixin');
+    const accountAllowed = readAllowFromFile(stateDir, 'weixin', 'acct-42');
+    expect(defaultAllowed.includes('user:lena')).toBeFalsy();
+    expect(accountAllowed.includes('user:lena')).toBeTruthy();
   } finally {
     cleanupDir(stateDir);
   }
@@ -378,11 +375,11 @@ test('approvePairingCode only removes the matched request, leaving others intact
       createdAt: isoTimestamp(-5 * 60 * 1000),
       lastSeenAt: isoTimestamp(-5 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'dingtalk', [r1, r2]);
-    approvePairingCode('dingtalk', 'RMVE01', stateDir);
-    const remaining = readPairingFile(stateDir, 'dingtalk');
-    assert.equal(remaining.length, 1);
-    assert.equal(remaining[0].code, 'KEEP01');
+    writePairingFile(stateDir, 'weixin', [r1, r2]);
+    approvePairingCode('weixin', 'RMVE01', stateDir);
+    const remaining = readPairingFile(stateDir, 'weixin');
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].code).toBe('KEEP01');
   } finally {
     cleanupDir(stateDir);
   }
@@ -399,9 +396,9 @@ test('rejectPairingRequest returns null for an unknown code', () => {
       createdAt: isoTimestamp(-5 * 60 * 1000),
       lastSeenAt: isoTimestamp(-5 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'telegram', [request]);
-    const result = rejectPairingRequest('telegram', 'NOPE00', stateDir);
-    assert.equal(result, null);
+    writePairingFile(stateDir, 'wecom', [request]);
+    const result = rejectPairingRequest('wecom', 'NOPE00', stateDir);
+    expect(result).toBe(null);
   } finally {
     cleanupDir(stateDir);
   }
@@ -410,8 +407,8 @@ test('rejectPairingRequest returns null for an unknown code', () => {
 test('rejectPairingRequest returns null when pairing file does not exist', () => {
   const stateDir = makeTmpDir();
   try {
-    const result = rejectPairingRequest('telegram', 'ANY000', stateDir);
-    assert.equal(result, null);
+    const result = rejectPairingRequest('wecom', 'ANY000', stateDir);
+    expect(result).toBe(null);
   } finally {
     cleanupDir(stateDir);
   }
@@ -426,10 +423,10 @@ test('rejectPairingRequest removes the request from the pairing file', () => {
       createdAt: isoTimestamp(-2 * 60 * 1000),
       lastSeenAt: isoTimestamp(-2 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'telegram', [request]);
-    rejectPairingRequest('telegram', 'RJCT01', stateDir);
-    const remaining = readPairingFile(stateDir, 'telegram');
-    assert.equal(remaining.length, 0);
+    writePairingFile(stateDir, 'wecom', [request]);
+    rejectPairingRequest('wecom', 'RJCT01', stateDir);
+    const remaining = readPairingFile(stateDir, 'wecom');
+    expect(remaining.length).toBe(0);
   } finally {
     cleanupDir(stateDir);
   }
@@ -444,10 +441,10 @@ test('rejectPairingRequest returns the rejected request object', () => {
       createdAt: isoTimestamp(-2 * 60 * 1000),
       lastSeenAt: isoTimestamp(-2 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'telegram', [request]);
-    const result = rejectPairingRequest('telegram', 'RJCT02', stateDir);
-    assert.equal(result.id, 'user:quinn');
-    assert.equal(result.code, 'RJCT02');
+    writePairingFile(stateDir, 'wecom', [request]);
+    const result = rejectPairingRequest('wecom', 'RJCT02', stateDir);
+    expect(result.id).toBe('user:quinn');
+    expect(result.code).toBe('RJCT02');
   } finally {
     cleanupDir(stateDir);
   }
@@ -462,10 +459,10 @@ test('rejectPairingRequest does NOT add the user to allowFrom', () => {
       createdAt: isoTimestamp(-1 * 60 * 1000),
       lastSeenAt: isoTimestamp(-1 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'telegram', [request]);
-    rejectPairingRequest('telegram', 'RJCT03', stateDir);
-    const allowed = readAllowFromFile(stateDir, 'telegram');
-    assert.ok(!allowed.includes('user:rita'), 'rejected user must not appear in allowFrom');
+    writePairingFile(stateDir, 'wecom', [request]);
+    rejectPairingRequest('wecom', 'RJCT03', stateDir);
+    const allowed = readAllowFromFile(stateDir, 'wecom');
+    expect(allowed.includes('user:rita')).toBeFalsy();
   } finally {
     cleanupDir(stateDir);
   }
@@ -486,11 +483,11 @@ test('rejectPairingRequest only removes the matched request, leaving others inta
       createdAt: isoTimestamp(-5 * 60 * 1000),
       lastSeenAt: isoTimestamp(-5 * 60 * 1000),
     };
-    writePairingFile(stateDir, 'telegram', [r1, r2]);
-    rejectPairingRequest('telegram', 'RJCT04', stateDir);
-    const remaining = readPairingFile(stateDir, 'telegram');
-    assert.equal(remaining.length, 1);
-    assert.equal(remaining[0].code, 'STAY01');
+    writePairingFile(stateDir, 'wecom', [r1, r2]);
+    rejectPairingRequest('wecom', 'RJCT04', stateDir);
+    const remaining = readPairingFile(stateDir, 'wecom');
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].code).toBe('STAY01');
   } finally {
     cleanupDir(stateDir);
   }

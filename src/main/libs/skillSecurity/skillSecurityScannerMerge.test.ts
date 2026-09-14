@@ -16,12 +16,9 @@
  *   - scanDurationMs is the sum of all individual report durations.
  *   - dimensionSummary reflects the merged (possibly truncated) findings.
  */
-import assert from 'node:assert/strict';
-import test from 'node:test';
-import { createRequire } from 'node:module';
+import { expect, test } from 'vitest';
 
-const require = createRequire(import.meta.url);
-const { mergeReports } = require('../dist-electron/main/libs/skillSecurity/skillSecurityScanner.js');
+import { mergeReports } from './skillSecurityScanner';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,13 +89,13 @@ function makeCriticalFinding(ruleId, file = 'run.sh') {
 // ── null / identity cases ────────────────────────────────────────────────────
 
 test('mergeReports returns null for an empty reports array', () => {
-  assert.equal(mergeReports([]), null);
+  expect(mergeReports([])).toBe(null);
 });
 
 test('mergeReports returns the exact same report object for a single-element array', () => {
   const report = makeReport({ skillName: 'solo-skill', riskScore: 5, riskLevel: 'low' });
   const result = mergeReports([report]);
-  assert.equal(result, report, 'should be the same object reference');
+  expect(result).toBe(report);
 });
 
 // ── skill name concatenation ─────────────────────────────────────────────────
@@ -107,7 +104,7 @@ test('mergeReports joins two skill names with ", "', () => {
   const a = makeReport({ skillName: 'docx' });
   const b = makeReport({ skillName: 'xlsx' });
   const result = mergeReports([a, b]);
-  assert.equal(result.skillName, 'docx, xlsx');
+  expect(result.skillName).toBe('docx, xlsx');
 });
 
 test('mergeReports joins three skill names with ", "', () => {
@@ -115,7 +112,7 @@ test('mergeReports joins three skill names with ", "', () => {
   const b = makeReport({ skillName: 'beta' });
   const c = makeReport({ skillName: 'gamma' });
   const result = mergeReports([a, b, c]);
-  assert.equal(result.skillName, 'alpha, beta, gamma');
+  expect(result.skillName).toBe('alpha, beta, gamma');
 });
 
 // ── finding aggregation ──────────────────────────────────────────────────────
@@ -126,16 +123,16 @@ test('mergeReports collects findings from both reports in input order', () => {
   const a = makeReport({ findings: [f1] });
   const b = makeReport({ findings: [f2] });
   const result = mergeReports([a, b]);
-  assert.equal(result.findings.length, 2);
-  assert.deepEqual(result.findings[0], f1);
-  assert.deepEqual(result.findings[1], f2);
+  expect(result.findings.length).toBe(2);
+  expect(result.findings[0]).toEqual(f1);
+  expect(result.findings[1]).toEqual(f2);
 });
 
 test('mergeReports preserves empty findings when both reports are clean', () => {
   const a = makeReport();
   const b = makeReport();
   const result = mergeReports([a, b]);
-  assert.equal(result.findings.length, 0);
+  expect(result.findings.length).toBe(0);
 });
 
 test('mergeReports truncates aggregated findings to 100 entries', () => {
@@ -146,12 +143,12 @@ test('mergeReports truncates aggregated findings to 100 entries', () => {
   const a = makeReport({ findings: makeFindings('a', 60) });
   const b = makeReport({ findings: makeFindings('b', 60) });
   const result = mergeReports([a, b]);
-  assert.equal(result.findings.length, 100);
+  expect(result.findings.length).toBe(100);
   // Verify ordering: first 60 from report A, then first 40 from report B
-  assert.equal(result.findings[0].ruleId, 'a-rule-0');
-  assert.equal(result.findings[59].ruleId, 'a-rule-59');
-  assert.equal(result.findings[60].ruleId, 'b-rule-0');
-  assert.equal(result.findings[99].ruleId, 'b-rule-39');
+  expect(result.findings[0].ruleId).toBe('a-rule-0');
+  expect(result.findings[59].ruleId).toBe('a-rule-59');
+  expect(result.findings[60].ruleId).toBe('b-rule-0');
+  expect(result.findings[99].ruleId).toBe('b-rule-39');
 });
 
 // ── risk score ───────────────────────────────────────────────────────────────
@@ -160,7 +157,7 @@ test('mergeReports risk score is 0 when all reports have no findings and score 0
   const a = makeReport({ riskScore: 0 });
   const b = makeReport({ riskScore: 0 });
   const result = mergeReports([a, b]);
-  assert.equal(result.riskScore, 0);
+  expect(result.riskScore).toBe(0);
 });
 
 test('mergeReports takes the maximum individual report score when findings contribute less', () => {
@@ -170,7 +167,7 @@ test('mergeReports takes the maximum individual report score when findings contr
   const a = makeReport({ riskScore: 40, riskLevel: 'medium' });
   const b = makeReport({ riskScore: 10, riskLevel: 'low' });
   const result = mergeReports([a, b]);
-  assert.equal(result.riskScore, 40);
+  expect(result.riskScore).toBe(40);
 });
 
 test('mergeReports computes score from merged findings when they exceed individual scores', () => {
@@ -183,7 +180,7 @@ test('mergeReports computes score from merged findings when they exceed individu
   const a = makeReport({ riskScore: 0, findings });
   const b = makeReport({ riskScore: 0 });
   const result = mergeReports([a, b]);
-  assert.equal(result.riskScore, 60);
+  expect(result.riskScore).toBe(60);
 });
 
 test('mergeReports caps total risk score at 100', () => {
@@ -196,14 +193,14 @@ test('mergeReports caps total risk score at 100', () => {
   const a = makeReport({ riskScore: 0, findings });
   const b = makeReport({ riskScore: 0 });
   const result = mergeReports([a, b]);
-  assert.equal(result.riskScore, 100);
+  expect(result.riskScore).toBe(100);
 });
 
 // ── risk level ───────────────────────────────────────────────────────────────
 
 test('mergeReports risk level is "safe" when score is 0', () => {
   const result = mergeReports([makeReport(), makeReport()]);
-  assert.equal(result.riskLevel, 'safe');
+  expect(result.riskLevel).toBe('safe');
 });
 
 test('mergeReports risk level is "low" for score 1–10', () => {
@@ -211,8 +208,8 @@ test('mergeReports risk level is "low" for score 1–10', () => {
   const findings = [makeWarningFinding('w1'), makeWarningFinding('w2')];
   const a = makeReport({ riskScore: 0, findings });
   const result = mergeReports([a, makeReport()]);
-  assert.equal(result.riskScore, 10);
-  assert.equal(result.riskLevel, 'low');
+  expect(result.riskScore).toBe(10);
+  expect(result.riskLevel).toBe('low');
 });
 
 test('mergeReports risk level is "medium" for score 11–30', () => {
@@ -220,8 +217,8 @@ test('mergeReports risk level is "medium" for score 11–30', () => {
   const findings = [makeDangerFinding('d1'), makeWarningFinding('w1')];
   const a = makeReport({ riskScore: 0, findings });
   const result = mergeReports([a, makeReport()]);
-  assert.equal(result.riskScore, 25);
-  assert.equal(result.riskLevel, 'medium');
+  expect(result.riskScore).toBe(25);
+  expect(result.riskLevel).toBe('medium');
 });
 
 test('mergeReports risk level is "high" for score 31–70', () => {
@@ -229,8 +226,8 @@ test('mergeReports risk level is "high" for score 31–70', () => {
   const findings = [makeCriticalFinding('c1')];
   const a = makeReport({ riskScore: 0, findings });
   const result = mergeReports([a, makeReport()]);
-  assert.equal(result.riskScore, 50);
-  assert.equal(result.riskLevel, 'high');
+  expect(result.riskScore).toBe(50);
+  expect(result.riskLevel).toBe('high');
 });
 
 test('mergeReports risk level is "critical" for score > 70', () => {
@@ -238,8 +235,8 @@ test('mergeReports risk level is "critical" for score > 70', () => {
   const findings = [makeCriticalFinding('c1'), makeCriticalFinding('c2')];
   const a = makeReport({ riskScore: 0, findings });
   const result = mergeReports([a, makeReport()]);
-  assert.equal(result.riskScore, 100);
-  assert.equal(result.riskLevel, 'critical');
+  expect(result.riskScore).toBe(100);
+  expect(result.riskLevel).toBe('critical');
 });
 
 // ── scanDurationMs ───────────────────────────────────────────────────────────
@@ -248,7 +245,7 @@ test('mergeReports sums scanDurationMs from all reports', () => {
   const a = makeReport({ scanDurationMs: 120 });
   const b = makeReport({ scanDurationMs: 350 });
   const result = mergeReports([a, b]);
-  assert.equal(result.scanDurationMs, 470);
+  expect(result.scanDurationMs).toBe(470);
 });
 
 test('mergeReports sums scanDurationMs across three reports', () => {
@@ -256,7 +253,7 @@ test('mergeReports sums scanDurationMs across three reports', () => {
   const b = makeReport({ scanDurationMs: 75 });
   const c = makeReport({ scanDurationMs: 25 });
   const result = mergeReports([a, b, c]);
-  assert.equal(result.scanDurationMs, 150);
+  expect(result.scanDurationMs).toBe(150);
 });
 
 // ── dimensionSummary ─────────────────────────────────────────────────────────
@@ -267,15 +264,15 @@ test('mergeReports dimensionSummary reflects merged findings dimensions', () => 
   const a = makeReport({ findings: [f1] });
   const b = makeReport({ findings: [f2] });
   const result = mergeReports([a, b]);
-  assert.ok(result.dimensionSummary.network, 'network dimension should appear');
-  assert.ok(result.dimensionSummary.dangerous_command, 'dangerous_command dimension should appear');
-  assert.equal(result.dimensionSummary.network.count, 1);
-  assert.equal(result.dimensionSummary.dangerous_command.count, 1);
+  expect(result.dimensionSummary.network).toBeTruthy();
+  expect(result.dimensionSummary.dangerous_command).toBeTruthy();
+  expect(result.dimensionSummary.network.count).toBe(1);
+  expect(result.dimensionSummary.dangerous_command.count).toBe(1);
 });
 
 test('mergeReports dimensionSummary is empty when there are no findings', () => {
   const result = mergeReports([makeReport(), makeReport()]);
-  assert.deepEqual(result.dimensionSummary, {});
+  expect(result.dimensionSummary).toEqual({});
 });
 
 test('mergeReports dimensionSummary tracks maxSeverity correctly', () => {
@@ -283,6 +280,6 @@ test('mergeReports dimensionSummary tracks maxSeverity correctly', () => {
   const info = makeInfoFinding('i1', 'b.sh');        // network / info
   const a = makeReport({ findings: [warning, info] });
   const result = mergeReports([a, makeReport()]);
-  assert.equal(result.dimensionSummary.network.count, 2);
-  assert.equal(result.dimensionSummary.network.maxSeverity, 'warning');
+  expect(result.dimensionSummary.network.count).toBe(2);
+  expect(result.dimensionSummary.network.maxSeverity).toBe('warning');
 });
