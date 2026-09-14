@@ -1,17 +1,22 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { DefaultAgentAvatarIcon } from '@shared/agent/avatar';
+import type { Platform } from '@shared/platform';
+import { PlatformRegistry } from '@shared/platform';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
+import { imService } from '../../services/im';
 import { resolveThinkingLevelForModel } from '../../services/modelThinkingLevelMemory';
 import type { RootState } from '../../store';
 import type { Model } from '../../store/slices/modelSlice';
 import type { PresetAgent } from '../../types/agent';
-import { getAgentDisplayName } from '../../utils/agentDisplay';
+import type { EmailInstanceConfig, IMGatewayConfig, QQInstanceConfig, WecomInstanceConfig } from '../../types/im';
+import { getAgentDisplayName, getAgentDisplayNameById } from '../../utils/agentDisplay';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
+import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
 import AgentAvatarIcon from './AgentAvatarIcon';
 import AgentAvatarPicker from './AgentAvatarPicker';
@@ -19,6 +24,14 @@ import AgentConfirmDialog from './AgentConfirmDialog';
 import AgentDetailToolbar from './AgentDetailToolbar';
 import AgentSkillSelector from './AgentSkillSelector';
 import { AgentConfirmDialogVariant, AgentDetailTab } from './constants';
+
+type MultiInstancePlatform = 'qq' | 'wecom' | 'email';
+type MultiInstanceConfig = QQInstanceConfig | WecomInstanceConfig | EmailInstanceConfig;
+
+const MULTI_INSTANCE_PLATFORMS: MultiInstancePlatform[] = ['qq', 'wecom', 'email'];
+
+const isMultiInstancePlatform = (platform: Platform): platform is MultiInstancePlatform =>
+  MULTI_INSTANCE_PLATFORMS.includes(platform as MultiInstancePlatform);
 
 interface AgentCreateModalProps {
   isOpen?: boolean;
@@ -56,6 +69,10 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const initialUserInfoRef = useRef('');
   const initializedOpenRef = useRef(false);
 
+  // IM binding state — keys are platform names or `platform:<instanceId>` for multi-instance platforms.
+  const [imConfig, setImConfig] = useState<IMGatewayConfig | null>(null);
+  const [boundKeys, setBoundKeys] = useState<Set<string>>(new Set());
+
   const getChangedFields = useCallback((): string[] => {
     const changedFields: string[] = [];
     if (name.trim()) changedFields.push('name');
@@ -68,8 +85,9 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     if (workingDirectory !== initialWorkingDirectoryRef.current) changedFields.push('workingDirectory');
     if (skillIds.length > 0) changedFields.push('skillIds');
     if (subagentAllowAgentIds.length > 0) changedFields.push('subagentAllowAgentIds');
+    if (boundKeys.size > 0) changedFields.push('imBindings');
     return changedFields;
-  }, [description, icon, identity, model, name, skillIds.length, subagentAllowAgentIds.length, systemPrompt, userInfo, workingDirectory]);
+  }, [boundKeys.size, description, icon, identity, model, name, skillIds.length, subagentAllowAgentIds.length, systemPrompt, userInfo, workingDirectory]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -96,6 +114,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setActiveTab(AgentDetailTab.Identity);
     setShowUnsavedConfirm(false);
     setShowTemplatePicker(false);
+    setBoundKeys(new Set());
+
+    imService.loadConfig().then((cfg) => {
+      if (cfg) setImConfig(cfg);
+    });
 
     setTemplatesLoading(true);
     agentService.getPresetTemplates()
@@ -127,6 +150,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setSubagentAllowAgentIds([]);
     setActiveTab(AgentDetailTab.Identity);
     setShowTemplatePicker(false);
+    setBoundKeys(new Set());
   };
 
   const handleApplyTemplate = (preset: PresetAgent) => {
@@ -195,8 +219,18 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
             window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentSaveFailed') }));
           }
         }
+        // Save IM bindings after agent is created
+        if (boundKeys.size > 0 && imConfig) {
+          const currentBindings = { ...(imConfig.settings?.platformAgentBindings || {}) };
+          for (const key of boundKeys) {
+            currentBindings[key] = agent.id;
+          }
+          await imService.persistConfig({
+            settings: { ...imConfig.settings, platformAgentBindings: currentBindings },
+          });
+          await imService.saveAndSyncConfig();
+        }
         agentService.switchAgent(agent.id);
-        
         onClose();
         resetForm();
       } else {
@@ -209,6 +243,38 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleToggleIMBinding = (key: string) => {
+    const next = new Set(boundKeys);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    setBoundKeys(next);
+  };
+
+  /** Get enabled instances for a multi-instance platform (doesn't require live connection) */
+  const getEnabledInstances = (platform: MultiInstancePlatform) => {
+    if (!imConfig) return [];
+    const cfg = imConfig[platform];
+    const instances = cfg?.instances;
+    if (!Array.isArray(instances)) return [];
+    return instances.filter((inst: MultiInstanceConfig) => inst.enabled);
+  };
+
+  const isPlatformConfigured = (platform: Platform): boolean => {
+    if (!imConfig) return false;
+    if (isMultiInstancePlatform(platform)) {
+      return getEnabledInstances(platform).length > 0;
+    }
+    return 'enabled' in imConfig[platform] && imConfig[platform].enabled === true;
+  };
+
+  /** Resolve agent name by id */
+  const getAgentName = (aid: string): string | null => {
+    return getAgentDisplayNameById(aid, agents);
   };
 
   const availableSubagentAgents = agents
@@ -224,12 +290,27 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     });
   };
 
+  const renderToggle = (isOn: boolean) => (
+    <div
+      className={`relative w-9 h-5 rounded-full transition-colors ${
+        isOn ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'
+      }`}
+    >
+      <div
+        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+          isOn ? 'translate-x-4' : 'translate-x-0.5'
+        }`}
+      />
+    </div>
+  );
+
   const tabs: { key: AgentDetailTab; label: string }[] = [
     { key: AgentDetailTab.Identity, label: i18nService.t('coworkBootstrapIdentityTitle') },
     { key: AgentDetailTab.Prompt, label: i18nService.t('coworkBootstrapSoulTitle') },
     { key: AgentDetailTab.User, label: i18nService.t('coworkBootstrapUserTitle') },
     { key: AgentDetailTab.Skills, label: i18nService.t('agentTabSkills') },
     { key: AgentDetailTab.Collaboration, label: i18nService.t('agentTabCollaboration') },
+    { key: AgentDetailTab.Im, label: i18nService.t('agentTabIM') },
   ];
 
   const renderTextEditor = (
@@ -400,6 +481,140 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         )}
 
         {activeTab === AgentDetailTab.Collaboration && renderCollaborationSettings()}
+
+        {activeTab === AgentDetailTab.Im && (
+          <div className="h-full overflow-y-auto">
+            <div className="space-y-1">
+              {PlatformRegistry.platforms
+                .filter((platform) => (getVisibleIMPlatforms(i18nService.getLanguage()) as readonly string[]).includes(platform))
+                .map((platform) => {
+                  const logo = PlatformRegistry.logo(platform);
+
+                  if (isMultiInstancePlatform(platform)) {
+                    const enabledInstances = getEnabledInstances(platform);
+
+                    if (enabledInstances.length === 0) {
+                      return (
+                        <div
+                          key={platform}
+                          className="flex items-center justify-between px-3 py-2.5 rounded-lg opacity-50"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center">
+                              <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-foreground">
+                                {i18nService.t(platform)}
+                              </div>
+                              <div className="text-xs text-secondary/50">
+                                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs text-secondary/50">
+                            {i18nService.t('agentIMNotConfigured') || 'Not configured'}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={platform} className="rounded-lg border border-border overflow-hidden">
+                        <div className="flex items-center gap-3 px-3 py-2.5 bg-surface-raised">
+                          <div className="flex h-8 w-8 items-center justify-center">
+                            <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+                          </div>
+                          <span className="text-sm font-semibold text-foreground">
+                            {i18nService.t(platform)}
+                          </span>
+                        </div>
+                        {enabledInstances.map((inst: MultiInstanceConfig, idx: number) => {
+                          const bindingKey = `${platform}:${inst.instanceId}`;
+                          const isBound = boundKeys.has(bindingKey);
+                          const bindings = imConfig?.settings?.platformAgentBindings || {};
+                          const otherAgentId = bindings[bindingKey];
+                          const boundToOther = Boolean(otherAgentId && !isBound);
+                          const otherAgentName = boundToOther ? getAgentName(otherAgentId) : null;
+                          return (
+                            <div
+                              key={inst.instanceId}
+                              className={`flex items-center justify-between px-3 py-2 pl-14 transition-colors cursor-pointer hover:bg-surface-raised ${
+                                idx < enabledInstances.length - 1 ? 'border-b border-border-subtle' : ''
+                              }`}
+                              onClick={() => handleToggleIMBinding(bindingKey)}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                                <span className="text-sm text-foreground">
+                                  {inst.instanceName}
+                                </span>
+                                {boundToOther && otherAgentName && (
+                                  <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                                    {(i18nService.t('agentIMBoundToOther') || '-> {agent}').replace('{agent}', otherAgentName)}
+                                  </span>
+                                )}
+                              </div>
+                              {renderToggle(isBound)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
+                  // Single-instance platform
+                  const configured = isPlatformConfigured(platform);
+                  const bound = boundKeys.has(platform);
+                  const bindings = imConfig?.settings?.platformAgentBindings || {};
+                  const otherAgentId = bindings[platform];
+                  const boundToOther = Boolean(configured && otherAgentId && !bound);
+                  const otherAgentName = boundToOther ? getAgentName(otherAgentId) : null;
+                  return (
+                    <div
+                      key={platform}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${
+                        configured
+                          ? 'hover:bg-surface-raised cursor-pointer'
+                          : 'opacity-50'
+                      }`}
+                      onClick={() => configured && handleToggleIMBinding(platform)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center">
+                          <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-foreground">
+                            {i18nService.t(platform)}
+                          </div>
+                          {!configured && (
+                            <div className="text-xs text-secondary/50">
+                              {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                            </div>
+                          )}
+                        </div>
+                        {boundToOther && otherAgentName && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            {(i18nService.t('agentIMBoundToOther') || '-> {agent}').replace('{agent}', otherAgentName)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {configured ? (
+                          renderToggle(bound)
+                        ) : (
+                          <span className="text-xs text-secondary/50">
+                            {i18nService.t('agentIMNotConfigured') || 'Not configured'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

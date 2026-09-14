@@ -2218,6 +2218,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imConnectivityCheckTitle_discord_group_requires_mention: 'Discord 群聊触发规则',
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: '钉钉会话权限',
+    imConnectivityCheckTitle_openclaw_gateway_not_running: 'OpenClaw 网关未运行',
+    imConnectivityCheckTitle_qq_guild_mention_hint: 'QQ 频道触发规则',
+    imConnectivityCheckTitle_qq_mention_hint: 'QQ 群聊与私信触发规则',
     imConnectivityCheckSuggestion_missing_credentials: '补全必填配置项后重试。',
     imConnectivityCheckSuggestion_auth_check: '核对平台凭证、应用权限和发布状态。',
     imConnectivityCheckSuggestion_gateway_running:
@@ -2369,6 +2372,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imWeixinQrAccountMissing:
       '微信已连接过此 OpenClaw，但未找到本地账号 ID。请重新加载状态后再试。',
     imWeixinCredentialsMissing: '微信登录凭据缺失，请重新扫码连接。',
+    kickedByOtherClient: '账号已在其它地方登录',
+    imQQGuideStep1: '在 QQ 开放平台（q.qq.com）注册并创建一个机器人应用',
     imQQGuideStep2: '进入"开发设置"页获取 AppID（纯数字）与 Client Secret',
     imQQGuideStep3: '在下方填入 AppID 和 Client Secret',
     imQQGuideStep4: '保存后机器人将自动通过 WebSocket 模式建立长连接',
@@ -5304,6 +5309,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imConnectivityCheckTitle_discord_group_requires_mention: 'Discord Group Trigger Rule',
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: 'DingTalk Conversation Permission',
+    imConnectivityCheckTitle_openclaw_gateway_not_running: 'OpenClaw Gateway Not Running',
+    imConnectivityCheckTitle_qq_guild_mention_hint: 'QQ Channel Trigger Rule',
+    imConnectivityCheckTitle_qq_mention_hint: 'QQ Group And Direct Message Trigger Rule',
     imConnectivityCheckSuggestion_missing_credentials: 'Fill required credentials and test again.',
     imConnectivityCheckSuggestion_auth_check:
       'Verify credentials, permissions, and app release status.',
@@ -5471,6 +5479,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'WeChat is already connected to this OpenClaw, but no local account ID was found. Refresh status and try again.',
     imWeixinCredentialsMissing:
       'WeChat login credentials are missing. Please scan the QR code again.',
+    kickedByOtherClient: 'Account logged in elsewhere',
     imQQGuideStep1: 'Sign up on QQ Open Platform (q.qq.com) and create a bot application',
     imQQGuideStep2: 'Find the AppID (numeric) and Client Secret under "Development Settings"',
     imQQGuideStep3: 'Enter AppID and Client Secret below',
