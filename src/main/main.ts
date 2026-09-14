@@ -10,7 +10,6 @@ import {
   type MenuItemConstructorOptions,
   nativeImage,
   nativeTheme,
-  net,
   powerMonitor,
   powerSaveBlocker,
   protocol,
@@ -21,7 +20,6 @@ import {
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { buildGoalSettingMessageMetadata } from '../common/goalCommandDisplay';
@@ -118,13 +116,11 @@ import {
   OpenClawEngineIpc,
   OpenClawGatewayRepairErrorCode,
 } from '../shared/openclawEngine/constants';
-import { type Platform, PlatformRegistry } from '../shared/platform';
+import { type Platform } from '../shared/platform';
 import type { ProviderConfig } from '../shared/providers';
 import {
-  ModelRuntimeProfile,
   OpenClawProviderId,
   parseModelThinkingLevel,
-  ProviderName,
 } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { type ShellGetBrowserAppsInput, ShellIpc, ShellOpenFailureReason } from '../shared/shell/constants';
@@ -147,7 +143,7 @@ import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
-import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
+import { type CoworkForkContextMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
 import {
   type EmailInstanceConfig,
@@ -195,7 +191,6 @@ import {
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { getCoworkLogPath } from './libs/coworkLogger';
 import {
-  registerProxyTokenRefresher,
   startCoworkOpenAICompatProxy,
   stopCoworkOpenAICompatProxy,
 } from './libs/coworkOpenAICompatProxy';
@@ -233,15 +228,9 @@ import { LibraryThumbnailRenderer } from './libs/libraryThumbnailRenderer';
 import { LibraryThumbnailService } from './libs/libraryThumbnailService';
 import { isLikelyBlankThumbnailBitmap } from './libs/libraryThumbnailValidation';
 import { exportLogsZip } from './libs/logExport';
-import { inferImageMimeTypeFromDataUrl, type PersistedGeneratedImageAsset, persistGeneratedImageAssets, type PersistGeneratedImageAssetsResult, persistGeneratedVideoAssets, type RemoteGeneratedMediaAsset } from './libs/mediaAssetPersistence';
 import {
   migrateAgentModelRefs,
-  parsePrimaryModelRef,
   resolveQualifiedAgentModelRef,
-  resolveServerModelRefForRun,
-  ServerModelRefResolutionStatus,
-  shouldSyncServerModelConfig,
-  syncServerModelConfigIfNeeded,
 } from './libs/openclawAgentModels';
 import { OpenClawChannelSessionSync } from './libs/openclawChannelSessionSync';
 import {
@@ -599,32 +588,6 @@ const buildAvailableOpenClawProviders = (): Record<string, { models: Array<{ id:
   }
 
   return providerMap;
-};
-
-const openClawConfigHasServerModels = (modelIds: string[]): boolean => {
-  const normalizedModelIds = modelIds.map(modelId => modelId.trim()).filter(Boolean);
-  if (normalizedModelIds.length === 0) return true;
-
-  try {
-    const configPath = getOpenClawEngineManager().getConfigPath();
-    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
-      models?: {
-        providers?: Record<string, { models?: Array<{ id?: string }> }>;
-      };
-    };
-    const serverProviderModels = parsed.models?.providers?.[OpenClawProviderId.EgoaiServer]?.models;
-    if (!Array.isArray(serverProviderModels)) return false;
-
-    const configuredModelIds = new Set(
-      serverProviderModels
-        .map(model => (typeof model.id === 'string' ? model.id.trim() : ''))
-        .filter(Boolean),
-    );
-    return normalizedModelIds.every(modelId => configuredModelIds.has(modelId));
-  } catch (error) {
-    console.debug('[Auth:getModels] OpenClaw config inspection failed; scheduling model sync.', error);
-    return false;
-  }
 };
 
 const normalizeOpenClawModelRef = (modelRef: string): string => {
@@ -1320,18 +1283,6 @@ const resolveSessionWorkingDirectory = (options: { cwd?: string; agentId?: strin
   const explicitWorkingDirectory = options.cwd?.trim();
   if (explicitWorkingDirectory) return explicitWorkingDirectory;
   return resolveAgentDefaultWorkingDirectory(options.agentId);
-};
-
-const isEgoaiServerModelRef = (modelRef: string): boolean => {
-  const normalized = modelRef.trim();
-  if (!normalized) return false;
-
-  const parsed = parsePrimaryModelRef(normalized);
-  if (parsed) {
-    return parsed.providerId === ProviderName.EgoaiServer;
-  }
-
-  return getAllServerModelMetadata().some(model => model.modelId === normalized);
 };
 
 const resolveCoworkAgentEngine = (): CoworkAgentEngine => {

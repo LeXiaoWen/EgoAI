@@ -709,7 +709,6 @@ const ANTHROPIC_EXPLICIT_CONTEXT_CACHE_PARAMS: OpenClawAgentModelDefault = {
 };
 
 const OPENAI_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
-const XAI_BASE_URL = 'https://api.x.ai/v1';
 
 const normalizeBaseUrlPath = (rawBaseUrl: string, pathName: string): string => {
   const trimmed = rawBaseUrl.trim();
@@ -1731,12 +1730,6 @@ export type OpenClawConfigSyncResult = {
   changedTopLevelKeys?: string[];
   restartImpact?: OpenClawConfigImpact;
 };
-
-const buildStreamingModeConfig = (
-  mode: 'off' | 'partial' | 'block' | 'progress',
-): { mode: 'off' | 'partial' | 'block' | 'progress' } => ({
-  mode,
-});
 
 const buildManagedBrowserProxyExtraArgs = (browserWebAccess: BrowserWebAccessConfig): string[] => {
   if (
