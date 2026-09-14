@@ -269,10 +269,6 @@ import {
   resolveCoworkSessionIdByOpenClawSessionKey,
 } from './libs/openclawLocalSessionResolver';
 import {
-  buildManagedSessionKey,
-  DEFAULT_MANAGED_AGENT_ID,
-} from './libs/openclawManagedSessionKey';
-import {
   addMemoryEntry,
   deleteMemoryEntry,
   ensureDefaultIdentity,
@@ -5787,18 +5783,6 @@ if (!gotTheLock) {
       }
     }
     return '127.0.0.1';
-  });
-
-  ipcMain.handle(ImIpcChannel.GetOpenClawConfigSchema, async () => {
-    try {
-      const result = await getIMGatewayManager().getOpenClawConfigSchema();
-      return { success: true, result };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get OpenClaw config schema',
-      };
-    }
   });
 
   // Weixin QR login

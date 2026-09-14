@@ -3,14 +3,14 @@
  * Strips IM-specific media metadata and replaces it with renderable markdown image syntax.
  * DISPLAY ONLY — does not affect what is sent to the AI model.
  *
- * NOTE: Some stripping (e.g. stripFeishuSystemHeader) already happens server-side
- * in openclawRuntimeAdapter.ts before the message is stored. This means some messages
- * arrive here already partially stripped (e.g. Feishu messages may be just a bare path).
+ * NOTE: Some stripping already happens server-side in openclawRuntimeAdapter.ts
+ * before the message is stored. This means some messages arrive here already
+ * partially stripped (a message may be reduced to just a bare media path).
  */
 
 import { stripGoalCommandPrefixForDisplay } from '../../common/sessionTitle';
 
-// --------------- Pattern A: NIM/DingTalk ---------------
+// --------------- Pattern A: bracketed placeholder + attachment block ---------------
 
 // Placeholder line — e.g. "[图片] https://nos.netease.com/..."
 // Capture the URL (group 2) so we can preserve it as plain text instead of stripping it.
@@ -32,8 +32,8 @@ const MEDIA_TAG_RE = /^\s*media:\w+\s*$/gm;
 
 // --------------- Shared patterns ---------------
 
-// System: [timestamp ...] metadata lines — injected by various openclaw plugins
-// (feishu, nim, popo, etc.) Matches timestamps like [2026-04-28 11:53:25 GMT+8]
+// System: [timestamp ...] metadata lines — injected by various openclaw channel
+// plugins. Matches timestamps like [2026-04-28 11:53:25 GMT+8]
 const SYSTEM_TIMESTAMP_LINE_RE = /^System:\s*\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+[^\]]*\].*$/gm;
 
 // Bare path in the openclaw inbound media directory — highly specific, safe to match
@@ -95,7 +95,7 @@ export function parseUserMessageForDisplay(
     addImagePath(attachment.localPath, mimeType.startsWith('image/') || mimeType === 'image/*');
   }
 
-  // --- Pattern A: NIM/DingTalk ---
+  // --- Pattern A: bracketed placeholder + attachment block ---
 
   if (result.includes('[图片]') || result.includes('[语音消息]') || result.includes('[视频]')
     || result.includes('[文件]') || result.includes('[多媒体消息]') || result.includes('[附件信息]')) {
@@ -105,7 +105,7 @@ export function parseUserMessageForDisplay(
     result = result.replace(ATTACHMENT_INFO_BLOCK_RE, '');
   }
 
-  // --- Pattern B: OpenClaw gateway (微信/飞书/企微) ---
+  // --- Pattern B: OpenClaw gateway ---
 
   if (result.includes('[media attached:')) {
     // Extract image paths
@@ -128,14 +128,13 @@ export function parseUserMessageForDisplay(
   }
 
   // --- Always: strip System: [timestamp] metadata lines ---
-  // These are injected by openclaw plugins (feishu, nim, popo, etc.)
-  // and are never user-typed content. The timestamp format is specific enough
-  // to avoid false positives.
+  // These are injected by openclaw channel plugins and are never user-typed
+  // content. The timestamp format is specific enough to avoid false positives.
   result = result.replace(SYSTEM_TIMESTAMP_LINE_RE, '');
 
   // --- Always: detect bare inbound image paths ---
-  // After server-side stripping (e.g. stripFeishuSystemHeader), the message may
-  // be reduced to just a bare path like "C:\...\openclaw\state\media\inbound\xxx.jpg".
+  // After server-side stripping, the message may be reduced to just a bare path
+  // like "C:\...\openclaw\state\media\inbound\xxx.jpg".
   // Only match paths in the openclaw inbound directory to avoid false positives.
   result = result.replace(OPENCLAW_INBOUND_IMAGE_RE, (_match, path) => {
     const p = path.trim();

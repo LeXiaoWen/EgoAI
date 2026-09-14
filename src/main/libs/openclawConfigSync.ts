@@ -284,7 +284,7 @@ const MANAGED_OWNER_ALLOW_FROM = [
   // Prefixing with `webchat:` does not round-trip through owner resolution,
   // so owner-only tools like `cron` never become available.
   'gateway-client',
-  // Native IM channel senders use their platform user ID (e.g. telegram:xxx),
+  // Native IM channel senders use their platform user ID (e.g. qqbot:xxx),
   // which would not match 'gateway-client'. Use wildcard so all senders that
   // pass the per-channel allowFrom gate are also recognised as owners.
   '*',

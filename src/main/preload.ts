@@ -880,7 +880,6 @@ contextBridge.exposeInMainWorld('electron', {
     // Status
     getStatus: () => ipcRenderer.invoke(ImIpcChannel.GetStatus),
     getLocalIp: () => ipcRenderer.invoke(ImIpcChannel.GetLocalIp) as Promise<string>,
-    getOpenClawConfigSchema: () => ipcRenderer.invoke(ImIpcChannel.GetOpenClawConfigSchema),
 
     // Weixin QR login
     weixinQrLoginStart: () => ipcRenderer.invoke(ImIpcChannel.WeixinQrLoginStart),

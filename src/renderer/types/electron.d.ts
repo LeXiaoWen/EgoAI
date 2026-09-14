@@ -1174,14 +1174,6 @@ interface IElectronAPI {
     // Status
     getStatus: () => Promise<{ success: boolean; status?: IMGatewayStatus; error?: string }>;
     getLocalIp: () => Promise<string>;
-    getOpenClawConfigSchema: () => Promise<{
-      success: boolean;
-      result?: {
-        schema: Record<string, unknown>;
-        uiHints: Record<string, Record<string, unknown>>;
-      };
-      error?: string;
-    }>;
 
     // Weixin QR login
     weixinQrLoginStart: () => Promise<{
@@ -1332,7 +1324,6 @@ interface IElectronAPI {
   networkStatus: {
     send: (status: 'online' | 'offline') => void;
   };
-  qwen: Record<string, never>;
 }
 
 declare global {

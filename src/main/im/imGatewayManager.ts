@@ -908,19 +908,6 @@ export class IMGatewayManager extends EventEmitter {
     return t('imUnknownPlatform');
   }
 
-  /**
-   * Fetch the OpenClaw config schema (JSON Schema + uiHints) from the gateway.
-   * Returns { schema, uiHints } or null if the gateway is unavailable.
-   */
-  async getOpenClawConfigSchema(): Promise<{ schema: Record<string, unknown>; uiHints: Record<string, Record<string, unknown>> } | null> {
-    try {
-      return await this.requestOpenClawGateway<{ schema: Record<string, unknown>; uiHints: Record<string, Record<string, unknown>> }>('config.schema', {});
-    } catch (err: any) {
-      console.warn('[IMGatewayManager] Failed to fetch config.schema from OpenClaw gateway:', err.message);
-      return null;
-    }
-  }
-
   private async requestOpenClawGateway<T = Record<string, unknown>>(
     method: string,
     params?: unknown,

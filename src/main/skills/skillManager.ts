@@ -1648,7 +1648,7 @@ export class SkillManager {
       const skillsRoot = this.getSkillsRoot();
 
       const newSkills = report.skills.filter(entry => {
-        // Skip bundled skills and plugin-provided skills (e.g. moltbot/POPO plugins)
+        // Skip bundled skills and skills provided by OpenClaw plugins
         if (entry.bundled || entry.source === 'openclaw-extra') return false;
         const normalizedBaseDir = path.resolve(entry.baseDir);
         const normalizedRoot = path.resolve(skillsRoot);

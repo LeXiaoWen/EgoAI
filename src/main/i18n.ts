@@ -45,7 +45,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     taskOutputTruncated:
       '[输出未完成] 模型已达到本次输出长度上限。部分结果已保留，但任务未确认完成；你可以继续对话以从中断处继续。',
 
-    // Feishu bot install
     coworkErrorAuthInvalid: 'API 密钥无效或已过期，请检查配置。',
     coworkErrorOAuthInvalid: 'OAuth 授权已失效或权限不足，请重新授权后重试。',
     coworkErrorModelAccessDenied: '当前凭据无权访问该模型，请切换模型或检查模型服务商配置。',
@@ -199,7 +198,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     taskOutputTruncated:
       '[Output incomplete] The model reached the output limit for this response. The partial result was preserved, but the task is not confirmed complete. Continue the conversation to resume.',
 
-    // Feishu bot install
     coworkErrorAuthInvalid: 'Invalid or expired API key. Please check your configuration.',
     coworkErrorOAuthInvalid: 'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
     coworkErrorModelAccessDenied: 'Your current credentials are not allowed to access the selected model. Switch models or check the model provider configuration.',

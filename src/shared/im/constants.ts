@@ -23,7 +23,6 @@ export const ImIpcChannel = {
   MessageReceived: 'im:message:received',
 
   GetLocalIp: 'im:getLocalIp',
-  GetOpenClawConfigSchema: 'im:openclaw:config-schema',
 
   WeixinQrLoginStart: 'im:weixin:qr-login-start',
   WeixinQrLoginWait: 'im:weixin:qr-login-wait',
