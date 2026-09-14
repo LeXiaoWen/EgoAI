@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { app, BrowserWindow, session } from 'electron';
 import extractZip from 'extract-zip';
 import fs from 'fs';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import path from 'path';
 
 import { ComputerUseSkillId } from '../../shared/computerUse/constants';
